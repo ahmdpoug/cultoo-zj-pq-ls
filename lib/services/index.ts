@@ -67,8 +67,10 @@ export const services: CultServices = {
   },
 
   forge: {
-    async forge(cardIds) {
-      return action<{ receipt: TxReceipt; card: CultCard }>({ action: 'forge', cardIds })
+    async forge(cardIds, cost) {
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash = chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, cost) : undefined
+      return action<{ receipt: TxReceipt; card: CultCard }>({ action: 'forge', cardIds, txHash })
     },
     async upgrade(cardId) {
       const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
@@ -85,8 +87,10 @@ export const services: CultServices = {
   },
 
   tournament: {
-    async enter(tournamentId) {
-      return action<TxReceipt>({ action: 'tournament', tournamentId })
+    async enter(tournamentId, entry) {
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash = chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, entry) : undefined
+      return action<TxReceipt>({ action: 'tournament', tournamentId, txHash })
     },
   },
 }

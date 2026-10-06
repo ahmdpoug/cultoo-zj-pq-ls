@@ -276,6 +276,7 @@ export async function scanProfile(playerId: string, handleRaw: string) {
   const card = buildCard(profile, { owner, id: randomId('card') })
   const isFirst = !player.mainCardId
 
+  const onChain = (await chainInfo()).configured
   const inserted = await db.transaction(async (tx) => {
     const [row] = await tx.insert(cards).values(cardValues(card, playerId)).returning()
     if (isFirst) {
@@ -284,7 +285,7 @@ export async function scanProfile(playerId: string, handleRaw: string) {
         .update(players)
         .set({
           mainCardId: row.id,
-          balance: STARTER.balance,
+          ...(onChain ? {} : { balance: STARTER.balance }),
           fragments: STARTER.fragments,
           materials: STARTER.materials,
           guildId: GUILD_BY_ARCHETYPE[card.archetype],
@@ -297,10 +298,12 @@ export async function scanProfile(playerId: string, handleRaw: string) {
     return row
   })
 
+  if (isFirst && onChain) await payoutPlayer(playerId, STARTER.balance, 'Starter grant')
+
   return { card: toCard(inserted, owner), profile }
 }
 
-export async function forgeCards(playerId: string, cardIds: string[]) {
+export async function forgeCards(playerId: string, cardIds: string[], txHash?: string) {
   if (cardIds.length !== 3) throw new HttpError(400, 'Select 3 cards of the same rarity.')
   const player = await getOrCreatePlayer(playerId)
   const inputs = await db.select().from(cards).where(and(eq(cards.ownerId, playerId), inArray(cards.id, cardIds)))
@@ -310,7 +313,8 @@ export async function forgeCards(playerId: string, cardIds: string[]) {
   const out = nextRarity(rarity)
   if (!out) throw new HttpError(400, 'Mythic cards cannot be forged further.')
   const cost = RARITY_META[out].forgeCost
-  if (player.balance < cost) throw new HttpError(402, `Forging requires ${cost} $CULT.`)
+  const onChain = (await chainInfo()).configured
+  const txReceipt = await chargePlayer(player, cost, 'forge', txHash)
 
   const best = [...inputs].sort((a, b) => b.stats.ctScore - a.stats.ctScore)[0]
   const bump = (v: number) => Math.min(99, v + 3)
@@ -337,7 +341,7 @@ export async function forgeCards(playerId: string, cardIds: string[]) {
     await tx
       .update(players)
       .set({
-        balance: player.balance - cost,
+        ...(onChain ? {} : { balance: player.balance - cost }),
         materials: player.materials + 4,
         ...(cardIds.includes(player.mainCardId ?? '') ? { mainCardId: row.id } : {}),
       })
@@ -348,7 +352,7 @@ export async function forgeCards(playerId: string, cardIds: string[]) {
     return row
   })
 
-  return { card: toCard(inserted, player.xHandle) }
+  return { card: toCard(inserted, player.xHandle), receipt: txReceipt }
 }
 
 /**
@@ -361,23 +365,7 @@ export async function upgradeCard(playerId: string, cardId: string, txHash?: str
   if (player.materials < UPGRADE_COST.materials) throw new HttpError(400, 'Not enough forge materials.')
 
   const onChain = (await chainInfo()).configured
-  let txReceipt: TxReceipt
-
-  if (onChain) {
-    if (!txHash) throw new HttpError(402, 'Send the $CULT upgrade fee before confirming.')
-    if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to upgrade on-chain.')
-    await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount: UPGRADE_COST.cult })
-    const [recorded] = await db
-      .insert(payments)
-      .values({ txHash, playerId, purpose: 'card-upgrade', amount: UPGRADE_COST.cult })
-      .onConflictDoNothing()
-      .returning()
-    if (!recorded) throw new HttpError(409, 'That transaction has already been used.')
-    txReceipt = { hash: txHash, at: Date.now(), explorerUrl: txUrl(txHash) }
-  } else {
-    if (player.balance < UPGRADE_COST.cult) throw new HttpError(402, 'Not enough $CULT for an upgrade.')
-    txReceipt = receipt()
-  }
+  const txReceipt = await chargePlayer(player, UPGRADE_COST.cult, 'card-upgrade', txHash)
 
   const result = await db.transaction(async (tx) => {
     await tx
@@ -436,6 +424,8 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
     return xp.levelsGained
   })
 
+  const payout = (await chainInfo()).configured ? await payoutPlayer(playerId, reward.cult, 'Battle reward') : null
+
   return {
     id: randomId('battle'),
     playerCardId: cardId,
@@ -447,25 +437,48 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
     rounds,
     at: Date.now(),
     levelsGained,
+    payout,
   }
 }
 
-/** Pays a seller from the treasury and records the attempt. Never throws. */
-async function payoutSeller(sellerId: string, amount: number, reason: string): Promise<PayoutResult> {
-  const [seller] = await db.select().from(players).where(eq(players.id, sellerId)).limit(1)
-  const to = seller?.walletAddress ?? null
+/** Pays a player from the treasury and records the attempt. Never throws. */
+async function payoutPlayer(playerId: string, amount: number, reason: string): Promise<PayoutResult> {
+  const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+  const to = player?.walletAddress ?? null
   if (!to) {
-    await db.insert(payouts).values({ playerId: sellerId, amount, reason, status: 'pending' })
+    await db.insert(payouts).values({ playerId, amount, reason, status: 'pending' })
     return { status: 'pending', hash: null, explorerUrl: null }
   }
   try {
     const hash = await sendFromTreasury(to, amount)
-    await db.insert(payouts).values({ playerId: sellerId, amount, reason, txHash: hash, status: 'sent' })
+    await db.insert(payouts).values({ playerId, amount, reason, txHash: hash, status: 'sent' })
     return { status: 'sent', hash, explorerUrl: txUrl(hash) }
   } catch {
-    await db.insert(payouts).values({ playerId: sellerId, amount, reason, status: 'failed' })
+    await db.insert(payouts).values({ playerId, amount, reason, status: 'failed' })
     return { status: 'failed', hash: null, explorerUrl: null }
   }
+}
+
+/**
+ * Collects a $CULT fee. On-chain the player must have already sent the amount to
+ * the treasury: the transfer is verified against their own wallet and its hash
+ * recorded, so it can never be replayed. Otherwise the in-game balance is charged.
+ */
+async function chargePlayer(player: PlayerRow, amount: number, purpose: string, txHash?: string): Promise<TxReceipt> {
+  if (!(await chainInfo()).configured) {
+    if (player.balance < amount) throw new HttpError(402, `You need ${amount} $CULT.`)
+    return receipt()
+  }
+  if (!txHash) throw new HttpError(402, 'Send the $CULT payment before confirming.')
+  if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to pay on-chain.')
+  await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount })
+  const [recorded] = await db
+    .insert(payments)
+    .values({ txHash, playerId: player.id, purpose, amount })
+    .onConflictDoNothing()
+    .returning()
+  if (!recorded) throw new HttpError(409, 'That transaction has already been used.')
+  return { hash: txHash, at: Date.now(), explorerUrl: txUrl(txHash) }
 }
 
 /**
@@ -483,23 +496,7 @@ export async function buyListing(playerId: string, listingId: string, txHash?: s
   if (!source) throw new HttpError(404, 'Card not found.')
 
   const onChain = (await chainInfo()).configured
-  let txReceipt: TxReceipt
-
-  if (onChain) {
-    if (!txHash) throw new HttpError(402, 'Send the $CULT payment before confirming the purchase.')
-    if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to buy on-chain.')
-    await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount: listing.price })
-    const [recorded] = await db
-      .insert(payments)
-      .values({ txHash, playerId, purpose: 'market-buy', amount: listing.price })
-      .onConflictDoNothing()
-      .returning()
-    if (!recorded) throw new HttpError(409, 'That transaction has already been used.')
-    txReceipt = { hash: txHash, at: Date.now(), explorerUrl: txUrl(txHash) }
-  } else {
-    if (player.balance < listing.price) throw new HttpError(402, `You need ${listing.price} $CULT.`)
-    txReceipt = receipt()
-  }
+  const txReceipt = await chargePlayer(player, listing.price, 'market-buy', txHash)
 
   const card: CultCard = { ...toCard(source, player.xHandle), id: randomId('card'), owner: player.xHandle ?? playerId, createdAt: Date.now() }
 
@@ -514,28 +511,32 @@ export async function buyListing(playerId: string, listingId: string, txHash?: s
     return row
   })
 
-  const payout = onChain ? await payoutSeller(listing.sellerId, listing.price, `Sale of @${source.handle}`) : null
+  const payout = onChain ? await payoutPlayer(listing.sellerId, listing.price, `Sale of @${source.handle}`) : null
 
   return { receipt: txReceipt, card: toCard(inserted, player.xHandle), payout }
 }
 
-export async function enterTournament(playerId: string, tid: string) {
+export async function enterTournament(playerId: string, tid: string, txHash?: string) {
   const parsed = parseTournamentId(tid)
   if (!parsed) throw new HttpError(400, 'Unknown tournament.')
   const player = await getOrCreatePlayer(playerId)
-  if (player.balance < parsed.template.entry) throw new HttpError(402, 'Not enough $CULT.')
   const [main] = player.mainCardId ? await db.select().from(cards).where(eq(cards.id, player.mainCardId)).limit(1) : []
   if (!main) throw new HttpError(400, 'You need a main card to enter.')
+
+  const onChain = (await chainInfo()).configured
+  const txReceipt = await chargePlayer(player, parsed.template.entry, 'tournament-entry', txHash)
 
   return db.transaction(async (tx) => {
     await tx
       .insert(tournamentEntries)
-      .values({ tournamentId: tid, playerId, cardId: main.id, txHash: receipt().hash })
+      .values({ tournamentId: tid, playerId, cardId: main.id, txHash: txReceipt.hash })
       .onConflictDoNothing()
-    await tx.update(players).set({ balance: player.balance - parsed.template.entry }).where(eq(players.id, playerId))
+    if (!onChain) {
+      await tx.update(players).set({ balance: player.balance - parsed.template.entry }).where(eq(players.id, playerId))
+    }
     await logActivity(tx, playerId, 'tournament', `Entered ${parsed.template.name}`)
     await progressQuest(tx, playerId, 'tournament')
-    return receipt()
+    return txReceipt
   })
 }
 

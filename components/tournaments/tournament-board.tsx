@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Clock, Crown, Users } from 'lucide-react'
-import type { Tournament } from '@/lib/types'
+import { CheckCircle2, Clock, Crown, ExternalLink, Users } from 'lucide-react'
+import type { Tournament, TxReceipt } from '@/lib/types'
 import { BRACKET_ROUNDS } from '@/lib/game/config'
-import { useTournaments } from '@/hooks/use-data'
+import { useChainInfo, useTournaments } from '@/hooks/use-data'
+import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
 import { useGame, useMounted } from '@/hooks/use-game'
 import { services, InsufficientBalanceError } from '@/lib/services'
 import { RARITY_META, compareRarity } from '@/lib/game/rarity'
@@ -34,13 +35,18 @@ export function TournamentBoard() {
   const [active, setActive] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ id: string; text: string } | null>(null)
+  const [tx, setTx] = useState<TxReceipt | null>(null)
+  const { data: chain } = useChainInfo()
   const tournament = tournaments.find((t) => t.id === active) ?? tournaments[0]
+  const onChain = Boolean(chain?.configured && chain.treasury)
 
   async function enter(t: Tournament) {
     setBusy(t.id)
     setMsg(null)
+    setTx(null)
     try {
-      await services.tournament.enter(t.id)
+      const receipt = await services.tournament.enter(t.id, t.entry)
+      setTx(receipt)
       setMsg({ id: t.id, text: 'Entry confirmed.' })
     } catch (e) {
       setMsg({ id: t.id, text: e instanceof InsufficientBalanceError ? 'Not enough $CULT.' : (e as Error).message })
@@ -136,6 +142,23 @@ export function TournamentBoard() {
                   )}
                 </div>
                 {msg?.id === t.id && <p role="status" className="mt-2 text-xs text-primary">{msg.text}</p>}
+                {onChain && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Entry is paid on-chain in $CULT on {CULT_CHAIN_NAME}
+                    {state.wallet.address ? ` from ${shortAddress(state.wallet.address)}` : ''}.
+                  </p>
+                )}
+                {tx?.explorerUrl && (
+                  <a
+                    href={tx.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 flex items-center gap-1.5 break-all font-mono text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                    {tx.hash}
+                  </a>
+                )}
               </Panel>
             </li>
           )

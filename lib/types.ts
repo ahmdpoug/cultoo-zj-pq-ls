@@ -73,6 +73,7 @@ export interface BattleRecord {
   reward: number
   rounds: BattleRound[]
   at: number
+  payout?: PayoutResult | null
 }
 
 export interface ActivityItem {

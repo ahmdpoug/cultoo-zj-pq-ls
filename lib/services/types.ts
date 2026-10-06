@@ -32,7 +32,7 @@ export interface MarketplaceService {
 }
 
 export interface ForgeService {
-  forge(cardIds: string[]): Promise<{ receipt: TxReceipt; card: CultCard }>
+  forge(cardIds: string[], cost: number): Promise<{ receipt: TxReceipt; card: CultCard }>
   upgrade(cardId: string): Promise<{ receipt: TxReceipt; levelsGained: number }>
 }
 
@@ -41,7 +41,7 @@ export interface ArenaService {
 }
 
 export interface TournamentService {
-  enter(tournamentId: string): Promise<TxReceipt>
+  enter(tournamentId: string, entry: number): Promise<TxReceipt>
 }
 
 export interface OnboardingService {

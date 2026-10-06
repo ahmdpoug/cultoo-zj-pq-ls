@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Flame, Hammer, Plus, Equal, PackageOpen } from 'lucide-react'
-import type { CultCard, Rarity } from '@/lib/types'
+import { ExternalLink, Flame, Hammer, Plus, Equal, PackageOpen } from 'lucide-react'
+import type { CultCard, Rarity, TxReceipt } from '@/lib/types'
 import { useGame } from '@/hooks/use-game'
+import { useChainInfo } from '@/hooks/use-data'
+import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
 import { services, InsufficientBalanceError } from '@/lib/services'
 import { RARITIES, RARITY_META, nextRarity } from '@/lib/game/rarity'
 import { num } from '@/lib/game/format'
@@ -23,13 +25,16 @@ export function Forge() {
   const [selected, setSelected] = useState<string[]>([])
   const [forging, setForging] = useState(false)
   const [result, setResult] = useState<CultCard | null>(null)
+  const [tx, setTx] = useState<TxReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { data: chain } = useChainInfo()
 
   const output = nextRarity(input)!
   const cost = RARITY_META[output].forgeCost
+  const onChain = Boolean(chain?.configured && chain.treasury)
   const pool = useMemo(() => state.cards.filter((c) => c.rarity === input), [state.cards, input])
   const chosen = selected.map((id) => state.cards.find((c) => c.id === id)).filter(Boolean) as CultCard[]
-  const ready = chosen.length === 3 && state.economy.balance >= cost
+  const ready = chosen.length === 3 && (onChain || state.economy.balance >= cost)
 
   function toggle(id: string) {
     setError(null)
@@ -45,9 +50,11 @@ export function Forge() {
   async function forge() {
     setForging(true)
     setError(null)
+    setTx(null)
     try {
-      const { card } = await services.forge.forge(selected)
+      const { card, receipt } = await services.forge.forge(selected, cost)
       setResult(card)
+      setTx(receipt)
       setSelected([])
     } catch (e) {
       setError(e instanceof InsufficientBalanceError ? `Forging requires ${num(cost)} $CULT.` : (e as Error).message)
@@ -124,7 +131,7 @@ export function Forge() {
             </div>
             <div>
               <dt className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Balance</dt>
-              <dd className={cn('font-display text-xl font-bold tabular-nums', state.economy.balance < cost && 'text-destructive')}>{num(state.economy.balance)}</dd>
+              <dd className={cn('font-display text-xl font-bold tabular-nums', !onChain && state.economy.balance < cost && 'text-destructive')}>{num(state.economy.balance)}</dd>
             </div>
             <div>
               <dt className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Selected</dt>
@@ -136,6 +143,12 @@ export function Forge() {
           </CultButton>
         </div>
         {error && <p role="alert" className="relative mt-3 text-center text-sm text-destructive sm:text-right">{error}</p>}
+        {onChain && (
+          <p className="relative mt-3 text-center text-xs text-muted-foreground sm:text-right">
+            Paid on-chain in $CULT on {CULT_CHAIN_NAME} from your wallet
+            {state.wallet.address ? ` (${shortAddress(state.wallet.address)})` : ''}.
+          </p>
+        )}
       </Panel>
 
       <section aria-labelledby="inventory">
@@ -190,6 +203,17 @@ export function Forge() {
             </div>
             <RarityBadge rarity={result.rarity} className="mt-2" />
             <p className="mt-3 text-sm text-muted-foreground">Three became one. Stats +3 across the board.</p>
+            {tx?.explorerUrl && (
+              <a
+                href={tx.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex items-center gap-1.5 break-all font-mono text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                {tx.hash}
+              </a>
+            )}
             <div className="mt-5 grid w-full grid-cols-2 gap-3">
               <CultButton variant="outline" onClick={() => setResult(null)}>
                 Forge Again

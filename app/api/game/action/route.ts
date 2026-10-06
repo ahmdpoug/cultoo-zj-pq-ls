@@ -28,7 +28,13 @@ export async function POST(req: NextRequest) {
       case 'scan':
         return NextResponse.json(await scanProfile(userId, String(body.handle ?? '')))
       case 'forge':
-        return NextResponse.json(await forgeCards(userId, Array.isArray(body.cardIds) ? (body.cardIds as string[]) : []))
+        return NextResponse.json(
+          await forgeCards(
+            userId,
+            Array.isArray(body.cardIds) ? (body.cardIds as string[]) : [],
+            body.txHash ? String(body.txHash) : undefined,
+          ),
+        )
       case 'upgrade':
         return NextResponse.json(await upgradeCard(userId, String(body.cardId ?? ''), body.txHash ? String(body.txHash) : undefined))
       case 'battle':
@@ -36,7 +42,9 @@ export async function POST(req: NextRequest) {
       case 'buy':
         return NextResponse.json(await buyListing(userId, String(body.listingId ?? ''), body.txHash ? String(body.txHash) : undefined))
       case 'tournament':
-        return NextResponse.json(await enterTournament(userId, String(body.tournamentId ?? '')))
+        return NextResponse.json(
+          await enterTournament(userId, String(body.tournamentId ?? ''), body.txHash ? String(body.txHash) : undefined),
+        )
       case 'mint':
         return NextResponse.json(await mintCard(userId, String(body.cardId ?? '')))
       case 'quest':
