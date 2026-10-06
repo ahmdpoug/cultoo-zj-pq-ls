@@ -14,6 +14,9 @@ const description =
   'CT is the game. Turn your Crypto Twitter identity into a collectible card, battle the community, forge legends and ascend through the CULT.'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000',
+  ),
   title: { default: '$CULT — CT Card Universe', template: '%s · $CULT' },
   description,
   applicationName: '$CULT',
