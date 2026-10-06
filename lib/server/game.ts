@@ -27,6 +27,7 @@ import {
   LISTING_FEE,
   MAX_LISTING_PRICE,
   QUESTS,
+  SCAN_PRICE,
   SEASON,
   TOURNAMENT_PAYOUT_RATIO,
   TOURNAMENT_TEMPLATES,
@@ -267,7 +268,18 @@ async function grantStarterInventory(tx: Tx, playerId: string) {
   await tx.insert(cards).values(chosen.map((c) => ({ ...cardValues(toCard(c), playerId), id: randomId('card') })))
 }
 
-export async function scanProfile(playerId: string, handleRaw: string) {
+/** Prices a scan without charging, so the client knows what to pay. */
+export async function quoteScan(playerId: string, handleRaw: string) {
+  const handle = normalizeHandle(handleRaw)
+  if (!handle) throw new HttpError(400, 'Enter a valid X username (letters, numbers, underscore).')
+  const profile = await lookupXProfile(handle)
+  const player = await getOrCreatePlayer(playerId)
+  const card = buildCard(profile, { owner: player.xHandle ?? handle, id: randomId('card') })
+  const free = !player.mainCardId
+  return { handle, rarity: card.rarity, price: free ? 0 : SCAN_PRICE[card.rarity], free, profile }
+}
+
+export async function scanProfile(playerId: string, handleRaw: string, txHash?: string) {
   const handle = normalizeHandle(handleRaw)
   if (!handle) throw new HttpError(400, 'Enter a valid X username (letters, numbers, underscore).')
 
@@ -276,6 +288,9 @@ export async function scanProfile(playerId: string, handleRaw: string) {
   const owner = player.xHandle ?? handle
   const card = buildCard(profile, { owner, id: randomId('card') })
   const isFirst = !player.mainCardId
+
+  // The first card is free so a new player can onboard without holding $CULT.
+  const txReceipt = isFirst ? receipt() : await chargePlayer(player, SCAN_PRICE[card.rarity], 'scan', txHash)
 
   const inserted = await db.transaction(async (tx) => {
     const [row] = await tx.insert(cards).values(cardValues(card, playerId)).returning()
@@ -297,7 +312,7 @@ export async function scanProfile(playerId: string, handleRaw: string) {
     return row
   })
 
-  return { card: toCard(inserted, owner), profile }
+  return { card: toCard(inserted, owner), profile, receipt: txReceipt }
 }
 
 export async function forgeCards(playerId: string, cardIds: string[], txHash?: string) {

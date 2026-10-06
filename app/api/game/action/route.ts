@@ -12,6 +12,7 @@ import {
   recordShare,
   resetPlayer,
   runBattle,
+  quoteScan,
   scanProfile,
   setMainCard,
   syncMainCard,
@@ -27,8 +28,12 @@ export async function POST(req: NextRequest) {
     const action = String(body.action ?? '')
 
     switch (action) {
+      case 'scan-quote':
+        return NextResponse.json(await quoteScan(userId, String(body.handle ?? '')))
       case 'scan':
-        return NextResponse.json(await scanProfile(userId, String(body.handle ?? '')))
+        return NextResponse.json(
+          await scanProfile(userId, String(body.handle ?? ''), body.txHash ? String(body.txHash) : undefined),
+        )
       case 'forge':
         return NextResponse.json(
           await forgeCards(

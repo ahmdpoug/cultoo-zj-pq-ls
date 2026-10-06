@@ -1,4 +1,4 @@
-import type { BattleRecord, CultCard, Listing, MarketPurchase, Rarity, TxReceipt, XProfile } from '@/lib/types'
+import type { BattleRecord, CultCard, Listing, MarketPurchase, Rarity, ScanQuote, TxReceipt, XProfile } from '@/lib/types'
 
 /**
  * Contracts for every external capability. The UI only talks to these interfaces,
@@ -47,7 +47,8 @@ export interface TournamentService {
 }
 
 export interface OnboardingService {
-  createPlayer(handle: string): Promise<{ card: CultCard; profile: XProfile }>
+  quote(handle: string): Promise<ScanQuote>
+  createPlayer(handle: string, price: number): Promise<{ card: CultCard; profile: XProfile; receipt: TxReceipt }>
 }
 
 export interface CultServices {

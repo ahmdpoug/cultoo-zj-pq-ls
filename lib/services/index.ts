@@ -1,5 +1,5 @@
 import { mutate } from 'swr'
-import type { BattleRecord, ChainInfo, CultCard, Listing, MarketPurchase, TxReceipt, XProfile } from '@/lib/types'
+import type { BattleRecord, ChainInfo, CultCard, Listing, MarketPurchase, ScanQuote, TxReceipt, XProfile } from '@/lib/types'
 import { authBridge } from '@/lib/auth/bridge'
 import { LISTING_FEE, UPGRADE_COST } from '@/lib/game/config'
 import { apiFetch, ApiError, STATE_KEY } from './api'
@@ -41,9 +41,20 @@ export const services: CultServices = {
   },
 
   onboarding: {
-    async createPlayer(handle) {
+    async quote(handle) {
       try {
-        return await action<{ card: CultCard; profile: XProfile }>({ action: 'scan', handle })
+        return await action<ScanQuote>({ action: 'scan-quote', handle })
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 400)) throw new XLookupError(err.message)
+        throw err
+      }
+    },
+    async createPlayer(handle, price) {
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash =
+        chain?.configured && chain.treasury && price > 0 ? await authBridge.sendCultTransfer(chain.treasury, price) : undefined
+      try {
+        return await action<{ card: CultCard; profile: XProfile; receipt: TxReceipt }>({ action: 'scan', handle, txHash })
       } catch (err) {
         if (err instanceof ApiError && (err.status === 404 || err.status === 400)) throw new XLookupError(err.message)
         throw err

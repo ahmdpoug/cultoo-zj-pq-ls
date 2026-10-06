@@ -3,9 +3,11 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, AtSign, RotateCcw, ScanLine, Share2, Swords } from 'lucide-react'
-import type { CultCard, XProfile } from '@/lib/types'
+import type { CultCard, ScanQuote, XProfile } from '@/lib/types'
 import { services, XLookupError } from '@/lib/services'
 import { useCultAuth } from '@/lib/auth/cult-auth'
+import { useChainInfo } from '@/hooks/use-data'
+import { CULT_CHAIN_NAME } from '@/lib/config/cult'
 import { CardAvatar } from '@/components/cards/card-avatar'
 import { XLogo } from '@/components/layout/account-button'
 import { useGame } from '@/hooks/use-game'
@@ -19,7 +21,7 @@ import { cultPower, normalizeHandle } from '@/lib/game/scoring'
 import { RARITY_META } from '@/lib/game/rarity'
 import { cn } from '@/lib/utils'
 
-type Phase = 'idle' | 'scanning' | 'profile' | 'reveal'
+type Phase = 'idle' | 'scanning' | 'pay' | 'profile' | 'reveal'
 
 const SCAN_STEPS = ['Reading timeline', 'Measuring influence', 'Weighing reputation', 'Calculating alpha', 'Striking card']
 
@@ -30,8 +32,11 @@ export function CTScanner() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [step, setStep] = useState(0)
   const [result, setResult] = useState<{ card: CultCard; profile: XProfile } | null>(null)
+  const [quote, setQuote] = useState<ScanQuote | null>(null)
+  const [paying, setPaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const { data: chain } = useChainInfo()
   const isFirstCard = !state.mainCardId || state.mainCardId === result?.card.id
 
   async function run(raw: string) {
@@ -45,9 +50,9 @@ export function CTScanner() {
     setPhase('scanning')
     setStep(0)
     const ticker = setInterval(() => setStep((s) => Math.min(s + 1, SCAN_STEPS.length - 1)), 480)
-    let res: Awaited<ReturnType<typeof services.onboarding.createPlayer>>
+    let res: ScanQuote
     try {
-      ;[res] = await Promise.all([services.onboarding.createPlayer(clean), new Promise((r) => setTimeout(r, 2500))])
+      ;[res] = await Promise.all([services.onboarding.quote(clean), new Promise((r) => setTimeout(r, 2500))])
     } catch (err) {
       setError(err instanceof XLookupError ? err.message : 'Could not reach X right now. Try again.')
       setPhase('idle')
@@ -55,9 +60,24 @@ export function CTScanner() {
     } finally {
       clearInterval(ticker)
     }
-    setResult(res)
-    setPhase('profile')
-    setTimeout(() => setPhase('reveal'), 1800)
+    setQuote(res)
+    setPhase('pay')
+  }
+
+  async function pay() {
+    if (!quote) return
+    setPaying(true)
+    setError(null)
+    try {
+      const res = await services.onboarding.createPlayer(quote.handle, quote.price)
+      setResult(res)
+      setPhase('profile')
+      setTimeout(() => setPhase('reveal'), 1800)
+    } catch (err) {
+      setError(err instanceof XLookupError ? err.message : (err as Error).message)
+    } finally {
+      setPaying(false)
+    }
   }
 
   function onSubmit(e: FormEvent) {
@@ -68,7 +88,9 @@ export function CTScanner() {
   function reset() {
     setPhase('idle')
     setResult(null)
+    setQuote(null)
     setHandle('')
+    setError(null)
   }
 
   if (phase === 'idle') {
@@ -106,7 +128,8 @@ export function CTScanner() {
               </CultButton>
             </div>
             <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
-              Scans pull live public metrics from X. Connect your X account to strike a card from your real profile.
+              Scans pull live public metrics from X. Each scan is paid in $CULT, priced by the rarity you pull — your first
+              card is free.
             </p>
           </form>
         </Panel>
@@ -150,6 +173,72 @@ export function CTScanner() {
             </li>
           ))}
         </ol>
+      </div>
+    )
+  }
+
+  if (phase === 'pay' && quote) {
+    const onChain = Boolean(chain?.configured && chain.treasury)
+    return (
+      <div className="grid items-center gap-10 lg:grid-cols-2">
+        <Panel className="p-6 sm:p-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Profile analyzed</p>
+          <div className="mt-3 flex items-center gap-3">
+            {quote.profile.avatarUrl && (
+              <CardAvatar handle={quote.profile.handle} src={quote.profile.avatarUrl} className="size-12" />
+            )}
+            <div className="min-w-0">
+              <p className="truncate font-display text-3xl font-bold">@{quote.profile.handle}</p>
+              {quote.profile.displayName !== quote.profile.handle && (
+                <p className="truncate text-sm text-muted-foreground">{quote.profile.displayName}</p>
+              )}
+            </div>
+          </div>
+          <div
+            data-rarity={quote.rarity}
+            className="mt-6 flex items-center justify-between rounded-xl border rarity-border rarity-bg p-4"
+          >
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Rarity pulled</p>
+              <RarityBadge rarity={quote.rarity} className="mt-2 px-3 py-1 text-xs" />
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">Scan fee</p>
+              <p className="font-display text-3xl font-bold tabular-nums">
+                {quote.free ? 'Free' : `${num(quote.price)} $CULT`}
+              </p>
+            </div>
+          </div>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="mt-5 flex flex-col gap-3">
+            <CultButton size="lg" className="w-full" onClick={pay} loading={paying} icon={<ScanLine className="size-4" />}>
+              {quote.free ? 'Strike Card' : `Pay ${num(quote.price)} $CULT`}
+            </CultButton>
+            <CultButton variant="ghost" className="w-full" onClick={reset} icon={<RotateCcw className="size-4" />}>
+              Scan another
+            </CultButton>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+            {quote.free
+              ? 'Your first card is free. Later scans are paid in $CULT, priced by the rarity you pull.'
+              : onChain
+                ? `Paid on-chain in $CULT on ${CULT_CHAIN_NAME} from your wallet.`
+                : 'Paid from your in-game $CULT balance.'}
+          </p>
+        </Panel>
+
+        <div className="flex flex-col items-center">
+          <div className="flex aspect-[5/7] w-72 items-center justify-center rounded-2xl border border-white/10 bg-card sm:w-80">
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <ScanLine className="size-10 text-primary" aria-hidden />
+              <span className="text-xs uppercase tracking-[0.3em]">Ready to strike</span>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }

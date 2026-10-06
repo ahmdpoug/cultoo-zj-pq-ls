@@ -29,6 +29,15 @@ export interface XProfile {
   source?: 'x' | 'generated'
 }
 
+/** What a scan will cost, priced by the rarity the profile pulls. */
+export interface ScanQuote {
+  handle: string
+  rarity: Rarity
+  price: number
+  free: boolean
+  profile: XProfile
+}
+
 export interface CultCard {
   id: string
   number: number

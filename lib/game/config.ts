@@ -10,6 +10,15 @@ export const SEASON = {
 
 export const UPGRADE_COST = { cult: 400, materials: 6, xp: 1200 }
 
+/** $CULT fee to strike a card, priced by the rarity pulled. */
+export const SCAN_PRICE: Record<Rarity, number> = {
+  common: 1000,
+  rare: 2000,
+  epic: 4000,
+  legendary: 8000,
+  mythic: 16000,
+}
+
 /** $CULT fee to put a card on the market. */
 export const LISTING_FEE = 50
 export const MAX_LISTING_PRICE = 1_000_000
