@@ -4,6 +4,7 @@
  */
 export const CULT_TOKEN_ADDRESS = '0xd1a6379192eFf4C6A7D498Ab6A5491cE3887FA0B'
 export const CULT_CHAIN_ID = 46630
+export const CULT_DECIMALS = 18
 export const CULT_CHAIN_NAME = 'Robinhood Chain Testnet'
 export const CULT_EXPLORER_URL = 'https://explorer.testnet.chain.robinhood.com'
 export const CULT_TOKEN_URL = `https://testnet.vibevibe.fun/token/${CULT_TOKEN_ADDRESS}`

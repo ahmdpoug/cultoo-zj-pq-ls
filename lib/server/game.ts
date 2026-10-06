@@ -8,6 +8,7 @@ import type {
   Guild,
   LeaderboardEntry,
   Listing,
+  PayoutResult,
   QuestAction,
   Rarity,
   SeasonInfo,
@@ -15,7 +16,8 @@ import type {
   TxReceipt,
 } from '@/lib/types'
 import { db, type Tx } from '@/lib/db'
-import { activity, battles, cards, listings, players, tournamentEntries, type CardRow, type PlayerRow } from '@/lib/db/schema'
+import { activity, battles, cards, listings, payments, payouts, players, tournamentEntries, type CardRow, type PlayerRow } from '@/lib/db/schema'
+import { chainInfo, sendFromTreasury, treasuryAddress, txUrl, verifyTransfer } from './chain'
 import { applyXp } from '@/lib/game/progression'
 import { randomId } from '@/lib/game/rng'
 import { buildCard, cultPower, normalizeHandle } from '@/lib/game/scoring'
@@ -420,25 +422,73 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
   }
 }
 
-export async function buyListing(playerId: string, listingId: string) {
+/** Pays a seller from the treasury and records the attempt. Never throws. */
+async function payoutSeller(sellerId: string, amount: number, reason: string): Promise<PayoutResult> {
+  const [seller] = await db.select().from(players).where(eq(players.id, sellerId)).limit(1)
+  const to = seller?.walletAddress ?? null
+  if (!to) {
+    await db.insert(payouts).values({ playerId: sellerId, amount, reason, status: 'pending' })
+    return { status: 'pending', hash: null, explorerUrl: null }
+  }
+  try {
+    const hash = await sendFromTreasury(to, amount)
+    await db.insert(payouts).values({ playerId: sellerId, amount, reason, txHash: hash, status: 'sent' })
+    return { status: 'sent', hash, explorerUrl: txUrl(hash) }
+  } catch {
+    await db.insert(payouts).values({ playerId: sellerId, amount, reason, status: 'failed' })
+    return { status: 'failed', hash: null, explorerUrl: null }
+  }
+}
+
+/**
+ * Completes a market purchase. When $CULT is configured on-chain the buyer must
+ * have already sent the price to the treasury: the transfer is verified against
+ * the buyer's own wallet and its hash recorded, so it can never be replayed.
+ * The seller is then paid from the treasury. Without on-chain config the
+ * purchase falls back to the in-game balance.
+ */
+export async function buyListing(playerId: string, listingId: string, txHash?: string) {
   const player = await getOrCreatePlayer(playerId)
   const [listing] = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.status, 'active'))).limit(1)
   if (!listing) throw new HttpError(404, 'This listing is no longer available.')
-  if (player.balance < listing.price) throw new HttpError(402, `You need ${listing.price} $CULT.`)
   const [source] = await db.select().from(cards).where(eq(cards.id, listing.cardId)).limit(1)
   if (!source) throw new HttpError(404, 'Card not found.')
+
+  const onChain = (await chainInfo()).configured
+  let txReceipt: TxReceipt
+
+  if (onChain) {
+    if (!txHash) throw new HttpError(402, 'Send the $CULT payment before confirming the purchase.')
+    if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to buy on-chain.')
+    await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount: listing.price })
+    const [recorded] = await db
+      .insert(payments)
+      .values({ txHash, playerId, purpose: 'market-buy', amount: listing.price })
+      .onConflictDoNothing()
+      .returning()
+    if (!recorded) throw new HttpError(409, 'That transaction has already been used.')
+    txReceipt = { hash: txHash, at: Date.now(), explorerUrl: txUrl(txHash) }
+  } else {
+    if (player.balance < listing.price) throw new HttpError(402, `You need ${listing.price} $CULT.`)
+    txReceipt = receipt()
+  }
 
   const card: CultCard = { ...toCard(source, player.xHandle), id: randomId('card'), owner: player.xHandle ?? playerId, createdAt: Date.now() }
 
   const inserted = await db.transaction(async (tx) => {
-    await tx.update(listings).set({ status: 'sold', buyerId: playerId, soldAt: new Date() }).where(eq(listings.id, listingId))
+    await tx
+      .update(listings)
+      .set({ status: 'sold', buyerId: playerId, soldAt: new Date(), txHash: onChain ? txReceipt.hash : null })
+      .where(eq(listings.id, listingId))
     const [row] = await tx.insert(cards).values(cardValues(card, playerId)).returning()
-    await tx.update(players).set({ balance: player.balance - listing.price }).where(eq(players.id, playerId))
+    if (!onChain) await tx.update(players).set({ balance: player.balance - listing.price }).where(eq(players.id, playerId))
     await logActivity(tx, playerId, 'buy', `Bought @${source.handle} for ${listing.price} $CULT`)
     return row
   })
 
-  return { receipt: receipt(), card: toCard(inserted, player.xHandle) }
+  const payout = onChain ? await payoutSeller(listing.sellerId, listing.price, `Sale of @${source.handle}`) : null
+
+  return { receipt: txReceipt, card: toCard(inserted, player.xHandle), payout }
 }
 
 export async function enterTournament(playerId: string, tid: string) {

@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR, { type SWRConfiguration } from 'swr'
-import type { CultCard, GuildView, LeaderboardEntry, Listing, SeasonInfo, Tournament } from '@/lib/types'
+import type { ChainInfo, CultCard, GuildView, LeaderboardEntry, Listing, SeasonInfo, Tournament } from '@/lib/types'
 import { apiFetch } from '@/lib/services/api'
 
 export interface LeaderboardData {
@@ -35,6 +35,10 @@ export function useGuilds() {
 
 export function useTournaments() {
   return useSWR<Tournament[]>('/api/game/tournaments', fetcher<Tournament[]>, PUBLIC_DATA)
+}
+
+export function useChainInfo() {
+  return useSWR<ChainInfo>('/api/game/chain', fetcher<ChainInfo>, { ...PUBLIC_DATA, dedupingInterval: 300_000 })
 }
 
 export function usePool() {

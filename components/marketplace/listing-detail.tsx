@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, ShoppingBag } from 'lucide-react'
-import type { Listing, TxReceipt } from '@/lib/types'
+import { ArrowLeft, CheckCircle2, ExternalLink, ShoppingBag } from 'lucide-react'
+import type { Listing, PayoutResult, TxReceipt } from '@/lib/types'
 import { useGame } from '@/hooks/use-game'
+import { useChainInfo } from '@/hooks/use-data'
+import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
 import { services, InsufficientBalanceError } from '@/lib/services'
 import { CultCardView } from '@/components/cards/cult-card'
 import { NftDetails } from '@/components/cards/nft-details'
@@ -16,18 +18,22 @@ import { cultPower, winRate } from '@/lib/game/scoring'
 
 export function ListingDetail({ listing }: { listing: Listing }) {
   const { state, hasPlayer } = useGame()
+  const { data: chain } = useChainInfo()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [tx, setTx] = useState<TxReceipt | null>(null)
+  const [payout, setPayout] = useState<PayoutResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { card } = listing
+  const onChain = Boolean(chain?.configured && chain.treasury)
 
   async function buy() {
     setBusy(true)
     setError(null)
     try {
-      const { receipt } = await services.marketplace.buy(listing)
+      const { receipt, payout: sellerPayout } = await services.marketplace.buy(listing)
       setTx(receipt)
+      setPayout(sellerPayout)
     } catch (e) {
       setError(e instanceof InsufficientBalanceError ? `You need ${num(listing.price)} $CULT. Win battles or complete quests to earn more.` : (e as Error).message)
     } finally {
@@ -71,6 +77,11 @@ export function ListingDetail({ listing }: { listing: Listing }) {
                 Scan to Buy
               </CultLink>
             )}
+            {onChain && (
+              <p className="w-full text-xs text-muted-foreground">
+                Settled on-chain in $CULT on {CULT_CHAIN_NAME}. Your wallet pays the treasury and the seller is paid out automatically.
+              </p>
+            )}
           </Panel>
 
           <Panel className="grid gap-5 p-6 sm:grid-cols-2">
@@ -101,13 +112,35 @@ export function ListingDetail({ listing }: { listing: Listing }) {
         </div>
       </div>
 
-      <Modal open={open} onClose={() => { setOpen(false); setTx(null); setError(null) }} title={tx ? 'Purchase Complete' : 'Confirm Purchase'}>
+      <Modal open={open} onClose={() => { setOpen(false); setTx(null); setPayout(null); setError(null) }} title={tx ? 'Purchase Complete' : 'Confirm Purchase'}>
         {tx ? (
           <div className="space-y-4 text-sm">
             <p className="flex items-center gap-2 font-semibold text-success">
               <CheckCircle2 className="size-4" aria-hidden /> @{card.handle} added to your collection
             </p>
-            <p className="break-all font-mono text-xs text-muted-foreground">Receipt: {tx.hash}</p>
+            {tx.explorerUrl ? (
+              <a
+                href={tx.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 break-all font-mono text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+                {tx.hash}
+              </a>
+            ) : (
+              <p className="break-all font-mono text-xs text-muted-foreground">Receipt: {tx.hash}</p>
+            )}
+            {payout && (
+              <p className="text-xs text-muted-foreground">
+                Seller payout:{' '}
+                {payout.status === 'sent'
+                  ? 'sent on-chain'
+                  : payout.status === 'pending'
+                    ? 'queued — the seller has no wallet on file yet'
+                    : 'failed and will be retried'}
+              </p>
+            )}
             <CultLink href="/forge" variant="outline" className="w-full">
               Take it to The Forge
             </CultLink>
@@ -122,13 +155,32 @@ export function ListingDetail({ listing }: { listing: Listing }) {
               <span className="text-muted-foreground">Price</span>
               <span className="font-semibold tabular-nums">{num(listing.price)} $CULT</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Your balance</span>
-              <span className="tabular-nums">{num(state.economy.balance)} $CULT</span>
-            </div>
+            {onChain ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Network</span>
+                  <span>{CULT_CHAIN_NAME}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Your wallet</span>
+                  <span className="font-mono text-xs">
+                    {state.wallet.address ? shortAddress(state.wallet.address) : 'not connected'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Treasury</span>
+                  <span className="font-mono text-xs">{shortAddress(chain?.treasury ?? '')}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Your balance</span>
+                <span className="tabular-nums">{num(state.economy.balance)} $CULT</span>
+              </div>
+            )}
             {error && <p role="alert" className="text-destructive">{error}</p>}
             <CultButton className="w-full" onClick={buy} loading={busy}>
-              {busy ? 'Processing' : 'Confirm Purchase'}
+              {busy ? 'Processing' : onChain ? `Pay ${num(listing.price)} $CULT` : 'Confirm Purchase'}
             </CultButton>
           </div>
         )}

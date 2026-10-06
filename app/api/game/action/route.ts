@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       case 'battle':
         return NextResponse.json(await runBattle(userId, String(body.cardId ?? ''), String(body.opponentCardId ?? '')))
       case 'buy':
-        return NextResponse.json(await buyListing(userId, String(body.listingId ?? '')))
+        return NextResponse.json(await buyListing(userId, String(body.listingId ?? ''), body.txHash ? String(body.txHash) : undefined))
       case 'tournament':
         return NextResponse.json(await enterTournament(userId, String(body.tournamentId ?? '')))
       case 'mint':

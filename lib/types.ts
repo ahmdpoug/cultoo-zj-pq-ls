@@ -160,6 +160,18 @@ export interface TxReceipt {
   explorerUrl: string | null
 }
 
+export interface PayoutResult {
+  status: 'sent' | 'pending' | 'failed'
+  hash: string | null
+  explorerUrl: string | null
+}
+
+export interface MarketPurchase {
+  receipt: TxReceipt
+  card: CultCard
+  payout: PayoutResult | null
+}
+
 export interface GameState {
   version: 2
   mainCardId: string | null

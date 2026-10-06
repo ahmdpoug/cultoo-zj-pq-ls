@@ -1,4 +1,4 @@
-import type { BattleRecord, CultCard, Listing, Rarity, TxReceipt, XProfile } from '@/lib/types'
+import type { BattleRecord, CultCard, Listing, MarketPurchase, Rarity, TxReceipt, XProfile } from '@/lib/types'
 
 /**
  * Contracts for every external capability. The UI only talks to these interfaces,
@@ -28,7 +28,7 @@ export interface NFTService {
 }
 
 export interface MarketplaceService {
-  buy(listing: Listing): Promise<{ receipt: TxReceipt; card: CultCard }>
+  buy(listing: Listing): Promise<MarketPurchase>
 }
 
 export interface ForgeService {

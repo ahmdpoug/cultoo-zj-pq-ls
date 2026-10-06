@@ -12,6 +12,10 @@ export interface XIdentity {
 export const authBridge = {
   getAccessToken: async (): Promise<string | null> => null,
   getXIdentity: (): XIdentity | null => null,
+  /** Sends $CULT from the signed-in user's wallet and resolves with the tx hash. */
+  sendCultTransfer: async (_to: string, _amount: number): Promise<string> => {
+    throw new Error('Your wallet is not ready yet. Try again in a moment.')
+  },
 }
 
 export function registerAuthBridge(next: Partial<typeof authBridge>) {

@@ -1,5 +1,6 @@
 import { mutate } from 'swr'
-import type { BattleRecord, CultCard, TxReceipt, XProfile } from '@/lib/types'
+import type { BattleRecord, ChainInfo, CultCard, MarketPurchase, TxReceipt, XProfile } from '@/lib/types'
+import { authBridge } from '@/lib/auth/bridge'
 import { apiFetch, ApiError, STATE_KEY } from './api'
 import { InsufficientBalanceError, type CultServices } from './types'
 import { xSocial, XLookupError } from './x-social'
@@ -57,7 +58,10 @@ export const services: CultServices = {
 
   marketplace: {
     async buy(listing) {
-      return action<{ receipt: TxReceipt; card: CultCard }>({ action: 'buy', listingId: listing.id })
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash =
+        chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, listing.price) : undefined
+      return action<MarketPurchase>({ action: 'buy', listingId: listing.id, txHash })
     },
   },
 
