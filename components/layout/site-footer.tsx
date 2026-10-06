@@ -9,8 +9,8 @@ export function SiteFooter() {
         <div>
           <CultLogo />
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            CT Card Universe turns real X profiles into collectible cards. $CULT is a conceptual in-game utility currency with no
-            monetary value, and every card, trade and battle is stored in the CULT database.
+            CT Card Universe turns real X profiles into collectible cards. $CULT is the in-game utility currency: it is spent on
+            upgrades, the Forge, tournaments and market listings, and settled on-chain between players.
           </p>
         </div>
         <FooterCol title="Play" links={PRIMARY_NAV.slice(1, 6)} />
