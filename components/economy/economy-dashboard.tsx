@@ -5,6 +5,8 @@ import { useGame } from '@/hooks/use-game'
 import { num, timeAgo } from '@/lib/game/format'
 import { CultMark } from '@/components/layout/cult-logo'
 import { Panel } from '@/components/ui-kit/primitives'
+import { CultLink } from '@/components/ui-kit/cult-button'
+import { CULT_BUY_URL, CULT_EXPLORER_URL, CULT_TOKEN_ADDRESS, shortAddress } from '@/lib/config/cult'
 import { DailyQuests } from './daily-quests'
 
 const USES = [
@@ -38,6 +40,19 @@ export function EconomyDashboard() {
           <p className="relative mt-3 max-w-md text-sm text-muted-foreground">
             $CULT is the utility currency of the CULT world. It is earned and spent in-game and has no monetary value.
           </p>
+          <div className="relative mt-5 flex flex-wrap items-center gap-3">
+            <CultLink href={CULT_BUY_URL} external size="sm" variant="outline" icon={<Coins className="size-4" />}>
+              Buy $CULT
+            </CultLink>
+            <a
+              href={`${CULT_EXPLORER_URL}/address/${CULT_TOKEN_ADDRESS}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {shortAddress(CULT_TOKEN_ADDRESS)}
+            </a>
+          </div>
         </Panel>
         <div className="grid grid-cols-2 gap-3">
           {[

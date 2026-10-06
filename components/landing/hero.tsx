@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ScanLine, Swords } from 'lucide-react'
+import { Coins, ScanLine, Swords } from 'lucide-react'
 import type { CultCard, Rarity } from '@/lib/types'
 import { CultLink } from '@/components/ui-kit/cult-button'
 import { Particles } from '@/components/ui-kit/particles'
@@ -9,6 +9,7 @@ import { CultCardView } from '@/components/cards/cult-card'
 import { useLeaderboard, usePool } from '@/hooks/use-data'
 import { RARITIES, RARITY_META } from '@/lib/game/rarity'
 import { compact } from '@/lib/game/format'
+import { CULT_BUY_URL } from '@/lib/config/cult'
 import { cn } from '@/lib/utils'
 
 export function Hero() {
@@ -74,6 +75,16 @@ export function Hero() {
           </CultLink>
           <CultLink href="/arena" size="lg" variant="outline" icon={<Swords className="size-4" />} className="w-full sm:w-auto">
             Enter The Arena
+          </CultLink>
+          <CultLink
+            href={CULT_BUY_URL}
+            external
+            size="lg"
+            variant="outline"
+            icon={<Coins className="size-4" />}
+            className="w-full sm:w-auto"
+          >
+            Buy $CULT
           </CultLink>
         </div>
 

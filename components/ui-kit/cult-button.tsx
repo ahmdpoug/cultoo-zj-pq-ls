@@ -54,9 +54,19 @@ export function CultLink({
   className,
   children,
   href,
-}: Omit<BaseProps, 'loading'> & { href: string }) {
+  external,
+}: Omit<BaseProps, 'loading'> & { href: string; external?: boolean }) {
+  const classes = cn(base, VARIANTS[variant], SIZES[size], className)
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={classes}>
+        {icon}
+        {children}
+      </a>
+    )
+  }
   return (
-    <Link href={href} className={cn(base, VARIANTS[variant], SIZES[size], className)}>
+    <Link href={href} className={classes}>
       {icon}
       {children}
     </Link>

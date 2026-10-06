@@ -16,6 +16,7 @@ import {
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import type { ChainInfo } from '@/lib/types'
 import { chainById, explorerTxUrl } from '@/lib/chain/chains'
+import { CULT_CHAIN_ID, CULT_TOKEN_ADDRESS } from '@/lib/config/cult'
 import { HttpError } from './http'
 
 interface TokenRuntime {
@@ -31,8 +32,8 @@ let runtime: TokenRuntime | null | undefined
 
 function load(): TokenRuntime | null {
   if (runtime !== undefined) return runtime
-  const token = process.env.CULT_TOKEN_ADDRESS
-  const chain = chainById(Number(process.env.CULT_CHAIN_ID))
+  const token = process.env.CULT_TOKEN_ADDRESS || CULT_TOKEN_ADDRESS
+  const chain = chainById(Number(process.env.CULT_CHAIN_ID || CULT_CHAIN_ID))
   const key = process.env.CULT_TREASURY_PRIVATE_KEY
   if (!token || !isAddress(token) || !chain || !key) {
     runtime = null

@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Coins, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useGame } from '@/hooks/use-game'
 import { num } from '@/lib/game/format'
+import { CULT_BUY_URL } from '@/lib/config/cult'
 import { AccountButton } from './account-button'
 import { CultLogo, CultMark } from './cult-logo'
 import { PRIMARY_NAV, SECONDARY_NAV, isActive } from './nav-config'
@@ -41,6 +42,15 @@ export function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <a
+            href={CULT_BUY_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground transition-colors hover:bg-primary/20 lg:inline-flex"
+          >
+            <Coins className="size-3.5" aria-hidden />
+            Buy $CULT
+          </a>
           <BalanceChip />
           <AccountButton />
           <button
