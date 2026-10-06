@@ -73,12 +73,11 @@ export interface BattleRecord {
   reward: number
   rounds: BattleRound[]
   at: number
-  payout?: PayoutResult | null
 }
 
 export interface ActivityItem {
   id: string
-  type: 'scan' | 'level' | 'battle' | 'forge' | 'mint' | 'buy' | 'tournament' | 'quest' | 'share'
+  type: 'scan' | 'level' | 'battle' | 'forge' | 'mint' | 'buy' | 'list' | 'tournament' | 'quest' | 'share'
   label: string
   at: number
 }
@@ -87,6 +86,8 @@ export interface Listing {
   id: string
   card: CultCard
   seller: string
+  /** Seller's wallet, so a buyer can pay them directly. Null when they have none. */
+  payTo: string | null
   price: number
   listedAt: number
 }
@@ -161,16 +162,9 @@ export interface TxReceipt {
   explorerUrl: string | null
 }
 
-export interface PayoutResult {
-  status: 'sent' | 'pending' | 'failed'
-  hash: string | null
-  explorerUrl: string | null
-}
-
 export interface MarketPurchase {
   receipt: TxReceipt
   card: CultCard
-  payout: PayoutResult | null
 }
 
 export interface GameState {

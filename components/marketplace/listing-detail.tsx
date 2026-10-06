@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, ExternalLink, ShoppingBag } from 'lucide-react'
-import type { Listing, PayoutResult, TxReceipt } from '@/lib/types'
+import type { Listing, TxReceipt } from '@/lib/types'
 import { useGame } from '@/hooks/use-game'
 import { useChainInfo } from '@/hooks/use-data'
 import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
@@ -22,7 +22,6 @@ export function ListingDetail({ listing }: { listing: Listing }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [tx, setTx] = useState<TxReceipt | null>(null)
-  const [payout, setPayout] = useState<PayoutResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { card } = listing
   const onChain = Boolean(chain?.configured && chain.treasury)
@@ -31,11 +30,10 @@ export function ListingDetail({ listing }: { listing: Listing }) {
     setBusy(true)
     setError(null)
     try {
-      const { receipt, payout: sellerPayout } = await services.marketplace.buy(listing)
+      const { receipt } = await services.marketplace.buy(listing)
       setTx(receipt)
-      setPayout(sellerPayout)
     } catch (e) {
-      setError(e instanceof InsufficientBalanceError ? `You need ${num(listing.price)} $CULT. Win battles or complete quests to earn more.` : (e as Error).message)
+      setError(e instanceof InsufficientBalanceError ? `You need ${num(listing.price)} $CULT.` : (e as Error).message)
     } finally {
       setBusy(false)
     }
@@ -79,7 +77,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
             )}
             {onChain && (
               <p className="w-full text-xs text-muted-foreground">
-                Settled on-chain in $CULT on {CULT_CHAIN_NAME}. Your wallet pays the treasury and the seller is paid out automatically.
+                Settled on-chain in $CULT on {CULT_CHAIN_NAME}. Your wallet pays the seller directly.
               </p>
             )}
           </Panel>
@@ -112,7 +110,7 @@ export function ListingDetail({ listing }: { listing: Listing }) {
         </div>
       </div>
 
-      <Modal open={open} onClose={() => { setOpen(false); setTx(null); setPayout(null); setError(null) }} title={tx ? 'Purchase Complete' : 'Confirm Purchase'}>
+      <Modal open={open} onClose={() => { setOpen(false); setTx(null); setError(null) }} title={tx ? 'Purchase Complete' : 'Confirm Purchase'}>
         {tx ? (
           <div className="space-y-4 text-sm">
             <p className="flex items-center gap-2 font-semibold text-success">
@@ -130,16 +128,6 @@ export function ListingDetail({ listing }: { listing: Listing }) {
               </a>
             ) : (
               <p className="break-all font-mono text-xs text-muted-foreground">Receipt: {tx.hash}</p>
-            )}
-            {payout && (
-              <p className="text-xs text-muted-foreground">
-                Seller payout:{' '}
-                {payout.status === 'sent'
-                  ? 'sent on-chain'
-                  : payout.status === 'pending'
-                    ? 'queued — the seller has no wallet on file yet'
-                    : 'failed and will be retried'}
-              </p>
             )}
             <CultLink href="/forge" variant="outline" className="w-full">
               Take it to The Forge
@@ -168,8 +156,8 @@ export function ListingDetail({ listing }: { listing: Listing }) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Treasury</span>
-                  <span className="font-mono text-xs">{shortAddress(chain?.treasury ?? '')}</span>
+                  <span className="text-muted-foreground">Seller wallet</span>
+                  <span className="font-mono text-xs">{listing.payTo ? shortAddress(listing.payTo) : 'not connected'}</span>
                 </div>
               </>
             ) : (

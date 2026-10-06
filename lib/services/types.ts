@@ -29,6 +29,8 @@ export interface NFTService {
 
 export interface MarketplaceService {
   buy(listing: Listing): Promise<MarketPurchase>
+  list(cardId: string, price: number): Promise<{ listing: Listing; receipt: TxReceipt }>
+  delist(listingId: string): Promise<{ ok: boolean }>
 }
 
 export interface ForgeService {

@@ -1,7 +1,7 @@
 import { mutate } from 'swr'
-import type { BattleRecord, ChainInfo, CultCard, MarketPurchase, TxReceipt, XProfile } from '@/lib/types'
+import type { BattleRecord, ChainInfo, CultCard, Listing, MarketPurchase, TxReceipt, XProfile } from '@/lib/types'
 import { authBridge } from '@/lib/auth/bridge'
-import { UPGRADE_COST } from '@/lib/game/config'
+import { LISTING_FEE, UPGRADE_COST } from '@/lib/game/config'
 import { apiFetch, ApiError, STATE_KEY } from './api'
 import { InsufficientBalanceError, type CultServices } from './types'
 import { xSocial, XLookupError } from './x-social'
@@ -60,9 +60,21 @@ export const services: CultServices = {
   marketplace: {
     async buy(listing) {
       const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
-      const txHash =
-        chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, listing.price) : undefined
+      let txHash: string | undefined
+      if (chain?.configured && chain.treasury) {
+        if (!listing.payTo) throw new Error('This seller has no wallet connected, so the card cannot be bought on-chain.')
+        txHash = await authBridge.sendCultTransfer(listing.payTo, listing.price)
+      }
       return action<MarketPurchase>({ action: 'buy', listingId: listing.id, txHash })
+    },
+    async list(cardId, price) {
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash =
+        chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, LISTING_FEE) : undefined
+      return action<{ listing: Listing; receipt: TxReceipt }>({ action: 'list', cardId, price, txHash })
+    },
+    async delist(listingId) {
+      return action<{ ok: boolean }>({ action: 'delist', listingId })
     },
   },
 

@@ -107,31 +107,7 @@ export function Arena({ mainCard }: { mainCard: CultCard }) {
             </p>
             <div className="mt-4 flex gap-3">
               <span className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 font-display text-sm font-bold">+{outcome.xp} XP</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 font-display text-sm font-bold">+{outcome.reward} $CULT</span>
             </div>
-            {outcome.payout && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                {outcome.payout.status === 'sent' ? (
-                  <>
-                    Reward sent on-chain.{' '}
-                    {outcome.payout.explorerUrl && (
-                      <a
-                        href={outcome.payout.explorerUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono text-primary hover:underline"
-                      >
-                        {outcome.payout.hash}
-                      </a>
-                    )}
-                  </>
-                ) : outcome.payout.status === 'pending' ? (
-                  'Reward queued — connect a wallet to receive it on-chain.'
-                ) : (
-                  'Reward payout failed and will be retried.'
-                )}
-              </p>
-            )}
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <CultButton onClick={fight} icon={<RotateCcw className="size-4" />}>
                 Rematch

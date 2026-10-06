@@ -8,19 +8,13 @@ export const SEASON = {
   qualifyTop: 100,
 }
 
-/** All prices are whole $CULT tokens. */
-export const PRICES = {
-  scan: 100,
-}
-
 export const UPGRADE_COST = { cult: 400, materials: 6, xp: 1200 }
 
+/** $CULT fee to put a card on the market. */
+export const LISTING_FEE = 50
+export const MAX_LISTING_PRICE = 1_000_000
+
 export const STARTER_MATERIALS = 36
-
-/** Battles beyond this count per UTC day still earn XP but no $CULT. */
-export const DAILY_REWARDED_BATTLES = 20
-
-export const MIN_REWARD_CLAIM = 100
 
 export const QUESTS: Quest[] = [
   { id: 'q-scan', title: 'Scan 3 CT profiles', target: 3, xp: 100, action: 'scan' },

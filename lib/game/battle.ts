@@ -11,8 +11,8 @@ export const BATTLE_STATS: { key: keyof CardStats | 'cultPower'; label: string }
 ]
 
 export const BATTLE_REWARDS = {
-  victory: { xp: 250, cult: 120 },
-  defeat: { xp: 80, cult: 20 },
+  victory: { xp: 250 },
+  defeat: { xp: 80 },
 }
 
 function statValue(card: CultCard, key: keyof CardStats | 'cultPower') {

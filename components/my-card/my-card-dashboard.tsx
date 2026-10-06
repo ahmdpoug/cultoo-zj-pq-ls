@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowUpCircle, ExternalLink, Gem, RefreshCw, Share2, Swords, History } from 'lucide-react'
+import { ArrowUpCircle, ExternalLink, Gem, RefreshCw, Share2, Swords, History, Tag } from 'lucide-react'
 import type { CultCard, TxReceipt } from '@/lib/types'
 import { useGame } from '@/hooks/use-game'
-import { useChainInfo, useLeaderboard } from '@/hooks/use-data'
+import { useChainInfo, useLeaderboard, useListings } from '@/hooks/use-data'
 import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
 import { services, UPGRADE_COST, InsufficientBalanceError } from '@/lib/services'
 import { CultCardView } from '@/components/cards/cult-card'
 import { ShareModal } from '@/components/cards/share-modal'
+import { ListCardModal } from '@/components/marketplace/list-card-modal'
 import { MintModal } from '@/components/cards/mint-modal'
 import { NftDetails } from '@/components/cards/nft-details'
 import { LevelProgress, LevelUpBurst } from '@/components/cards/level-progress'
@@ -28,15 +29,33 @@ export function MyCardDashboard({ card }: { card: CultCard }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [nftOpen, setNftOpen] = useState(false)
   const [mintOpen, setMintOpen] = useState(false)
+  const [listOpen, setListOpen] = useState(false)
+  const [delisting, setDelisting] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [levelUp, setLevelUp] = useState<number | null>(null)
   const [tx, setTx] = useState<TxReceipt | null>(null)
   const { data: chain } = useChainInfo()
+  const { data: listings } = useListings()
 
   const power = cultPower(card)
   const myRank = board?.myRank ?? null
   const onChain = Boolean(chain?.configured && chain.treasury)
+  const myListing = listings?.find((l) => l.card.id === card.id) ?? null
+
+  async function delist() {
+    if (!myListing) return
+    setDelisting(true)
+    setNotice(null)
+    try {
+      await services.marketplace.delist(myListing.id)
+      setNotice('Card delisted — it is free to use again.')
+    } catch (e) {
+      setNotice((e as Error).message)
+    } finally {
+      setDelisting(false)
+    }
+  }
 
   async function upgrade() {
     setUpgrading(true)
@@ -74,6 +93,28 @@ export function MyCardDashboard({ card }: { card: CultCard }) {
           <CultButton variant="outline" size="sm" onClick={() => setShareOpen(true)} icon={<Share2 className="size-4" />}>
             Share to X
           </CultButton>
+          {myListing ? (
+            <CultButton
+              variant="outline"
+              size="sm"
+              className="col-span-2"
+              onClick={delist}
+              loading={delisting}
+              icon={<Tag className="size-4" />}
+            >
+              Delist from Market
+            </CultButton>
+          ) : (
+            <CultButton
+              variant="outline"
+              size="sm"
+              className="col-span-2"
+              onClick={() => setListOpen(true)}
+              icon={<Tag className="size-4" />}
+            >
+              List for Sale
+            </CultButton>
+          )}
           <CultButton variant="ghost" size="sm" className="col-span-2" onClick={() => setNftOpen(true)} icon={<Gem className="size-4" />}>
             View NFT
           </CultButton>
@@ -174,6 +215,7 @@ export function MyCardDashboard({ card }: { card: CultCard }) {
       </div>
 
       <ShareModal card={card} open={shareOpen} onClose={() => setShareOpen(false)} />
+      <ListCardModal card={card} open={listOpen} onClose={() => setListOpen(false)} />
       <MintModal card={card} open={mintOpen} onClose={() => setMintOpen(false)} />
       <Modal open={nftOpen} onClose={() => setNftOpen(false)} title={`CULT Card NFT`}>
         <NftDetails card={card} />

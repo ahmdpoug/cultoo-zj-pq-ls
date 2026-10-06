@@ -3,7 +3,9 @@ import { requireUserId } from '@/lib/server/auth'
 import { errorResponse, HttpError } from '@/lib/server/http'
 import {
   buyListing,
+  cancelListing,
   claimQuest,
+  createListing,
   enterTournament,
   forgeCards,
   mintCard,
@@ -41,6 +43,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(await runBattle(userId, String(body.cardId ?? ''), String(body.opponentCardId ?? '')))
       case 'buy':
         return NextResponse.json(await buyListing(userId, String(body.listingId ?? ''), body.txHash ? String(body.txHash) : undefined))
+      case 'list':
+        return NextResponse.json(
+          await createListing(userId, String(body.cardId ?? ''), Number(body.price ?? 0), body.txHash ? String(body.txHash) : undefined),
+        )
+      case 'delist':
+        return NextResponse.json(await cancelListing(userId, String(body.listingId ?? '')))
       case 'tournament':
         return NextResponse.json(
           await enterTournament(userId, String(body.tournamentId ?? ''), body.txHash ? String(body.txHash) : undefined),

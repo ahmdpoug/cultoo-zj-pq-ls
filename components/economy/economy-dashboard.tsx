@@ -22,7 +22,7 @@ const USES = [
 export function EconomyDashboard() {
   const { state, mainCard, totalPower } = useGame()
   const e = state.economy
-  const txTypes = new Set(['buy', 'forge', 'mint', 'tournament', 'battle', 'quest'])
+  const txTypes = new Set(['buy', 'forge', 'tournament', 'list'])
   const ledger = state.activity.filter((a) => txTypes.has(a.type)).slice(0, 10)
 
   return (
@@ -38,7 +38,7 @@ export function EconomyDashboard() {
             {num(e.balance)}
           </p>
           <p className="relative mt-3 max-w-md text-sm text-muted-foreground">
-            $CULT is the utility currency of the CULT world. It is earned and spent in-game and has no monetary value.
+            $CULT is the utility currency of the CULT world. Every $CULT is spent in-game — on upgrades, the Forge, tournaments and market listings. It has no monetary value.
           </p>
           <div className="relative mt-5 flex flex-wrap items-center gap-3">
             <CultLink href={CULT_BUY_URL} external size="sm" variant="outline" icon={<Coins className="size-4" />}>

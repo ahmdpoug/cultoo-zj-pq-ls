@@ -1,6 +1,5 @@
 import {
   createPublicClient,
-  createWalletClient,
   erc20Abi,
   formatUnits,
   getAddress,
@@ -148,16 +147,3 @@ export async function verifyTransfer({ hash, from, to, amount }: { hash: string;
   if (!ok) throw new HttpError(402, `Transaction does not contain a ${amount} $CULT transfer to the expected wallet.`)
 }
 
-/** Sends `amount` $CULT from the treasury. Returns once the transfer is broadcast. */
-export async function sendFromTreasury(to: string, amount: number): Promise<Hash> {
-  const r = requireToken()
-  if (!isAddress(to)) throw new HttpError(400, 'Invalid payout wallet.')
-  const meta = await tokenMeta(r)
-  const wallet = createWalletClient({ account: r.treasury, chain: r.chain, transport: http(r.rpc) })
-  return wallet.writeContract({
-    address: r.token,
-    abi: erc20Abi,
-    functionName: 'transfer',
-    args: [getAddress(to), parseUnits(String(amount), meta.decimals)],
-  })
-}

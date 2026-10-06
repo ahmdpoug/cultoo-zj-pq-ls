@@ -114,15 +114,5 @@ export const tournamentResults = pgTable('tournament_results', {
   settledAt: ts('settled_at').notNull().defaultNow(),
 })
 
-export const payouts = pgTable('payouts', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  playerId: text('player_id').notNull(),
-  amount: bigint('amount', { mode: 'number' }).notNull(),
-  reason: text('reason').notNull(),
-  txHash: text('tx_hash'),
-  status: text('status').notNull().default('pending'),
-  at: ts('at').notNull().defaultNow(),
-})
-
 export type PlayerRow = typeof players.$inferSelect
 export type CardRow = typeof cards.$inferSelect

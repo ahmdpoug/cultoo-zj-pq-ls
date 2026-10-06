@@ -8,7 +8,6 @@ import type {
   Guild,
   LeaderboardEntry,
   Listing,
-  PayoutResult,
   QuestAction,
   Rarity,
   SeasonInfo,
@@ -16,8 +15,8 @@ import type {
   TxReceipt,
 } from '@/lib/types'
 import { db, type Tx } from '@/lib/db'
-import { activity, battles, cards, listings, payments, payouts, players, tournamentEntries, type CardRow, type PlayerRow } from '@/lib/db/schema'
-import { chainInfo, sendFromTreasury, treasuryAddress, txUrl, verifyTransfer } from './chain'
+import { activity, battles, cards, listings, payments, players, tournamentEntries, type CardRow, type PlayerRow } from '@/lib/db/schema'
+import { chainInfo, treasuryAddress, txUrl, verifyTransfer } from './chain'
 import { applyXp } from '@/lib/game/progression'
 import { randomId } from '@/lib/game/rng'
 import { buildCard, cultPower, normalizeHandle } from '@/lib/game/scoring'
@@ -25,6 +24,8 @@ import { RARITY_META, nextRarity } from '@/lib/game/rarity'
 import { BATTLE_REWARDS, resolveBattle } from '@/lib/game/battle'
 import {
   GUILD_DEFINITIONS,
+  LISTING_FEE,
+  MAX_LISTING_PRICE,
   QUESTS,
   SEASON,
   TOURNAMENT_PAYOUT_RATIO,
@@ -41,7 +42,7 @@ import { lookupXProfile } from './x'
 
 /** Sentinel owner for house cards that seed the market, leaderboard and guilds. */
 export const SYSTEM_ID = 'system'
-const STARTER = { balance: 12_500, fragments: 240, materials: 36 }
+const STARTER = { fragments: 240, materials: 36 }
 const SEASON_PRIZE_POOL = 2_500_000
 const BASE_PRICE: Record<Rarity, number> = { common: 900, rare: 3200, epic: 9500, legendary: 25_000, mythic: 88_000 }
 
@@ -276,7 +277,6 @@ export async function scanProfile(playerId: string, handleRaw: string) {
   const card = buildCard(profile, { owner, id: randomId('card') })
   const isFirst = !player.mainCardId
 
-  const onChain = (await chainInfo()).configured
   const inserted = await db.transaction(async (tx) => {
     const [row] = await tx.insert(cards).values(cardValues(card, playerId)).returning()
     if (isFirst) {
@@ -285,7 +285,6 @@ export async function scanProfile(playerId: string, handleRaw: string) {
         .update(players)
         .set({
           mainCardId: row.id,
-          ...(onChain ? {} : { balance: STARTER.balance }),
           fragments: STARTER.fragments,
           materials: STARTER.materials,
           guildId: GUILD_BY_ARCHETYPE[card.archetype],
@@ -297,8 +296,6 @@ export async function scanProfile(playerId: string, handleRaw: string) {
     await unlockAchievement(tx, playerId, 'first-scan')
     return row
   })
-
-  if (isFirst && onChain) await payoutPlayer(playerId, STARTER.balance, 'Starter grant')
 
   return { card: toCard(inserted, owner), profile }
 }
@@ -312,6 +309,7 @@ export async function forgeCards(playerId: string, cardIds: string[], txHash?: s
   if (inputs.some((c) => c.rarity !== rarity)) throw new HttpError(400, 'Select 3 cards of the same rarity.')
   const out = nextRarity(rarity)
   if (!out) throw new HttpError(400, 'Mythic cards cannot be forged further.')
+  await assertNotListed(cardIds)
   const cost = RARITY_META[out].forgeCost
   const onChain = (await chainInfo()).configured
   const txReceipt = await chargePlayer(player, cost, 'forge', txHash)
@@ -363,6 +361,7 @@ export async function forgeCards(playerId: string, cardIds: string[], txHash?: s
 export async function upgradeCard(playerId: string, cardId: string, txHash?: string) {
   const player = await getOrCreatePlayer(playerId)
   if (player.materials < UPGRADE_COST.materials) throw new HttpError(400, 'Not enough forge materials.')
+  await assertNotListed([cardId])
 
   const onChain = (await chainInfo()).configured
   const txReceipt = await chargePlayer(player, UPGRADE_COST.cult, 'card-upgrade', txHash)
@@ -390,6 +389,7 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
   if (!mine) throw new HttpError(404, 'Card not found.')
   const [opponent] = await db.select().from(cards).where(eq(cards.id, opponentCardId)).limit(1)
   if (!opponent) throw new HttpError(404, 'Opponent not found.')
+  await assertNotListed([cardId])
 
   const { rounds, result } = resolveBattle(toCard(mine, player.xHandle), toCard(opponent))
   const reward = BATTLE_REWARDS[result]
@@ -404,7 +404,7 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
       opponentRarity: opponent.rarity,
       result,
       xp: reward.xp,
-      reward: reward.cult,
+      reward: 0,
       rounds,
     })
     await tx
@@ -414,7 +414,7 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
     const xp = await grantXp(tx, playerId, cardId, reward.xp)
     await tx
       .update(players)
-      .set({ balance: player.balance + reward.cult, fragments: player.fragments + (result === 'victory' ? 12 : 3) })
+      .set({ fragments: player.fragments + (result === 'victory' ? 12 : 3) })
       .where(eq(players.id, playerId))
     await logActivity(tx, playerId, 'battle', `${result === 'victory' ? 'Defeated' : 'Lost to'} @${opponent.handle}`)
     await unlockAchievement(tx, playerId, 'first-battle')
@@ -424,8 +424,6 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
     return xp.levelsGained
   })
 
-  const payout = (await chainInfo()).configured ? await payoutPlayer(playerId, reward.cult, 'Battle reward') : null
-
   return {
     id: randomId('battle'),
     playerCardId: cardId,
@@ -433,45 +431,27 @@ export async function runBattle(playerId: string, cardId: string, opponentCardId
     opponentRarity: opponent.rarity as Rarity,
     result,
     xp: reward.xp,
-    reward: reward.cult,
+    reward: 0,
     rounds,
     at: Date.now(),
     levelsGained,
-    payout,
-  }
-}
-
-/** Pays a player from the treasury and records the attempt. Never throws. */
-async function payoutPlayer(playerId: string, amount: number, reason: string): Promise<PayoutResult> {
-  const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-  const to = player?.walletAddress ?? null
-  if (!to) {
-    await db.insert(payouts).values({ playerId, amount, reason, status: 'pending' })
-    return { status: 'pending', hash: null, explorerUrl: null }
-  }
-  try {
-    const hash = await sendFromTreasury(to, amount)
-    await db.insert(payouts).values({ playerId, amount, reason, txHash: hash, status: 'sent' })
-    return { status: 'sent', hash, explorerUrl: txUrl(hash) }
-  } catch {
-    await db.insert(payouts).values({ playerId, amount, reason, status: 'failed' })
-    return { status: 'failed', hash: null, explorerUrl: null }
   }
 }
 
 /**
- * Collects a $CULT fee. On-chain the player must have already sent the amount to
- * the treasury: the transfer is verified against their own wallet and its hash
- * recorded, so it can never be replayed. Otherwise the in-game balance is charged.
+ * Verifies an on-chain $CULT transfer from the player to `to` and records its
+ * hash once, so a receipt can never be replayed across actions.
  */
-async function chargePlayer(player: PlayerRow, amount: number, purpose: string, txHash?: string): Promise<TxReceipt> {
-  if (!(await chainInfo()).configured) {
-    if (player.balance < amount) throw new HttpError(402, `You need ${amount} $CULT.`)
-    return receipt()
-  }
+async function verifyPayment(
+  player: PlayerRow,
+  amount: number,
+  purpose: string,
+  txHash: string | undefined,
+  to: string,
+): Promise<TxReceipt> {
   if (!txHash) throw new HttpError(402, 'Send the $CULT payment before confirming.')
   if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to pay on-chain.')
-  await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount })
+  await verifyTransfer({ hash: txHash, from: player.walletAddress, to, amount })
   const [recorded] = await db
     .insert(payments)
     .values({ txHash, playerId: player.id, purpose, amount })
@@ -482,38 +462,130 @@ async function chargePlayer(player: PlayerRow, amount: number, purpose: string, 
 }
 
 /**
- * Completes a market purchase. When $CULT is configured on-chain the buyer must
- * have already sent the price to the treasury: the transfer is verified against
- * the buyer's own wallet and its hash recorded, so it can never be replayed.
- * The seller is then paid from the treasury. Without on-chain config the
- * purchase falls back to the in-game balance.
+ * Collects a $CULT fee into the treasury. On-chain the player must have already
+ * sent the amount: the transfer is verified against their own wallet and its hash
+ * recorded, so it can never be replayed. Otherwise the in-game balance is charged.
+ */
+async function chargePlayer(player: PlayerRow, amount: number, purpose: string, txHash?: string): Promise<TxReceipt> {
+  if (!(await chainInfo()).configured) {
+    if (player.balance < amount) throw new HttpError(402, `You need ${amount} $CULT.`)
+    return receipt()
+  }
+  return verifyPayment(player, amount, purpose, txHash, treasuryAddress())
+}
+
+/** Cards on the market are locked: they can't be forged, upgraded or battled. */
+async function assertNotListed(cardIds: string[]) {
+  const [listed] = await db
+    .select({ id: listings.id })
+    .from(listings)
+    .where(and(inArray(listings.cardId, cardIds), eq(listings.status, 'active')))
+    .limit(1)
+  if (listed) throw new HttpError(409, 'A listed card is locked until it sells or is delisted.')
+}
+
+/**
+ * Lists one of the player's cards for sale. The listing fee is a $CULT spend;
+ * the sale price itself is settled directly between buyer and seller.
+ */
+export async function createListing(playerId: string, cardId: string, price: number, txHash?: string) {
+  const player = await getOrCreatePlayer(playerId)
+  if (!Number.isInteger(price) || price <= 0) throw new HttpError(400, 'Enter a whole $CULT price above zero.')
+  if (price > MAX_LISTING_PRICE) throw new HttpError(400, `Price must be ${MAX_LISTING_PRICE} $CULT or less.`)
+  const [card] = await db.select().from(cards).where(and(eq(cards.id, cardId), eq(cards.ownerId, playerId))).limit(1)
+  if (!card) throw new HttpError(404, 'Card not found.')
+  const [existing] = await db
+    .select()
+    .from(listings)
+    .where(and(eq(listings.cardId, cardId), eq(listings.status, 'active')))
+    .limit(1)
+  if (existing) throw new HttpError(409, 'This card is already listed.')
+
+  const onChain = (await chainInfo()).configured
+  if (onChain && !player.walletAddress) throw new HttpError(400, 'Connect a wallet so buyers can pay you directly.')
+  const txReceipt = await chargePlayer(player, LISTING_FEE, 'listing-fee', txHash)
+
+  const row = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(listings)
+      .values({ id: randomId('list'), cardId, sellerId: playerId, price, status: 'active' })
+      .returning()
+    await logActivity(tx, playerId, 'list', `Listed @${card.handle} for ${price} $CULT`)
+    return inserted
+  })
+
+  return {
+    listing: {
+      id: row.id,
+      card: toCard(card, player.xHandle),
+      seller: player.xHandle ?? card.handle,
+      payTo: player.walletAddress,
+      price,
+      listedAt: row.listedAt.getTime(),
+    } satisfies Listing,
+    receipt: txReceipt,
+  }
+}
+
+/** Pulls a card back off the market so it can be used again. */
+export async function cancelListing(playerId: string, listingId: string) {
+  const [listing] = await db
+    .select()
+    .from(listings)
+    .where(and(eq(listings.id, listingId), eq(listings.sellerId, playerId), eq(listings.status, 'active')))
+    .limit(1)
+  if (!listing) throw new HttpError(404, 'Listing not found.')
+  await db.transaction(async (tx) => {
+    await tx.update(listings).set({ status: 'cancelled' }).where(eq(listings.id, listingId))
+    await logActivity(tx, playerId, 'list', 'Delisted a card from the market')
+  })
+  return { ok: true }
+}
+
+/**
+ * Completes a market purchase. On-chain the buyer pays the seller directly: the
+ * transfer is verified against the buyer's own wallet and its hash recorded, so
+ * it can never be replayed. Ownership of the card moves to the buyer. Without
+ * on-chain config the in-game balance moves from buyer to seller.
  */
 export async function buyListing(playerId: string, listingId: string, txHash?: string) {
   const player = await getOrCreatePlayer(playerId)
   const [listing] = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.status, 'active'))).limit(1)
   if (!listing) throw new HttpError(404, 'This listing is no longer available.')
+  if (listing.sellerId === playerId) throw new HttpError(400, 'You already own this card.')
   const [source] = await db.select().from(cards).where(eq(cards.id, listing.cardId)).limit(1)
   if (!source) throw new HttpError(404, 'Card not found.')
 
   const onChain = (await chainInfo()).configured
-  const txReceipt = await chargePlayer(player, listing.price, 'market-buy', txHash)
+  let txReceipt: TxReceipt
+  if (onChain) {
+    const [seller] = await db.select().from(players).where(eq(players.id, listing.sellerId)).limit(1)
+    if (!seller?.walletAddress) throw new HttpError(409, 'The seller has no wallet connected, so this card cannot be bought on-chain.')
+    txReceipt = await verifyPayment(player, listing.price, 'market-buy', txHash, seller.walletAddress)
+  } else {
+    if (player.balance < listing.price) throw new HttpError(402, `You need ${listing.price} $CULT.`)
+    txReceipt = receipt()
+  }
 
-  const card: CultCard = { ...toCard(source, player.xHandle), id: randomId('card'), owner: player.xHandle ?? playerId, createdAt: Date.now() }
-
-  const inserted = await db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     await tx
       .update(listings)
       .set({ status: 'sold', buyerId: playerId, soldAt: new Date(), txHash: onChain ? txReceipt.hash : null })
       .where(eq(listings.id, listingId))
-    const [row] = await tx.insert(cards).values(cardValues(card, playerId)).returning()
-    if (!onChain) await tx.update(players).set({ balance: player.balance - listing.price }).where(eq(players.id, playerId))
+    const [row] = await tx.update(cards).set({ ownerId: playerId }).where(eq(cards.id, listing.cardId)).returning()
+    if (!onChain) {
+      await tx.update(players).set({ balance: player.balance - listing.price }).where(eq(players.id, playerId))
+      await tx.update(players).set({ balance: sql`${players.balance} + ${listing.price}` }).where(eq(players.id, listing.sellerId))
+    }
+    await tx
+      .update(players)
+      .set({ mainCardId: null })
+      .where(and(eq(players.id, listing.sellerId), eq(players.mainCardId, listing.cardId)))
     await logActivity(tx, playerId, 'buy', `Bought @${source.handle} for ${listing.price} $CULT`)
     return row
   })
 
-  const payout = onChain ? await payoutPlayer(listing.sellerId, listing.price, `Sale of @${source.handle}`) : null
-
-  return { receipt: txReceipt, card: toCard(inserted, player.xHandle), payout }
+  return { receipt: txReceipt, card: toCard(updated, player.xHandle) }
 }
 
 export async function enterTournament(playerId: string, tid: string, txHash?: string) {
@@ -699,6 +771,7 @@ export async function getActiveListings(): Promise<Listing[]> {
     id: listing.id,
     card: toCard(card, seller?.xHandle ?? card.handle),
     seller: seller?.xHandle ?? card.handle,
+    payTo: seller?.walletAddress ?? null,
     price: listing.price,
     listedAt: listing.listedAt.getTime(),
   }))
@@ -718,6 +791,7 @@ export async function getListingById(id: string): Promise<Listing | null> {
     id: row.listing.id,
     card: toCard(row.card, row.seller?.xHandle ?? row.card.handle),
     seller: row.seller?.xHandle ?? row.card.handle,
+    payTo: row.seller?.walletAddress ?? null,
     price: row.listing.price,
     listedAt: row.listing.listedAt.getTime(),
   }
