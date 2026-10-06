@@ -30,12 +30,23 @@ interface TokenRuntime {
 
 let runtime: TokenRuntime | null | undefined
 
+/** Accepts a raw 32-byte hex key, tolerating surrounding quotes/whitespace. */
+function normalizePrivateKey(raw: string | undefined): Hash | null {
+  if (!raw) return null
+  const cleaned = raw.trim().replace(/^["']|["']$/g, '')
+  const hex = cleaned.startsWith('0x') ? cleaned : `0x${cleaned}`
+  return /^0x[0-9a-fA-F]{64}$/.test(hex) ? (hex as Hash) : null
+}
+
 function load(): TokenRuntime | null {
   if (runtime !== undefined) return runtime
   const token = process.env.CULT_TOKEN_ADDRESS || CULT_TOKEN_ADDRESS
   const chain = chainById(Number(process.env.CULT_CHAIN_ID || CULT_CHAIN_ID))
-  const key = process.env.CULT_TREASURY_PRIVATE_KEY
+  const key = normalizePrivateKey(process.env.CULT_TREASURY_PRIVATE_KEY)
   if (!token || !isAddress(token) || !chain || !key) {
+    if (process.env.CULT_TREASURY_PRIVATE_KEY && !key) {
+      console.warn('[cult] CULT_TREASURY_PRIVATE_KEY is not a 32-byte hex private key; on-chain payments are disabled.')
+    }
     runtime = null
     return null
   }
@@ -43,7 +54,7 @@ function load(): TokenRuntime | null {
   runtime = {
     chain,
     token: getAddress(token),
-    treasury: privateKeyToAccount((key.startsWith('0x') ? key : `0x${key}`) as Hash),
+    treasury: privateKeyToAccount(key),
     client: createPublicClient({ chain, transport: http(rpc) }) as PublicClient,
     rpc,
   }
