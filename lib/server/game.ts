@@ -577,6 +577,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
         rank: 0,
         handle: card.handle,
         displayName: card.displayName,
+        avatarUrl: card.avatarUrl,
         archetype: card.archetype,
         rarity: card.rarity,
         cultPower: power,

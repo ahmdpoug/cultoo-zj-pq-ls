@@ -65,7 +65,7 @@ export function Leaderboard() {
               return (
                 <li key={e.handle} data-rarity={e.rarity} className={cn('glass flex flex-col items-center rounded-2xl px-2 text-center sm:px-4', first ? 'rarity-border pb-6 pt-8' : 'pb-5 pt-6')}>
                   {first && <Crown className="mb-2 size-5 rarity-text" aria-hidden />}
-                  <CardAvatar handle={e.handle} className={first ? 'w-16 sm:w-20' : 'w-12 sm:w-16'} />
+                  <CardAvatar handle={e.handle} src={e.avatarUrl} className={first ? 'w-16 sm:w-20' : 'w-12 sm:w-16'} />
                   <p className="mt-3 w-full truncate text-sm font-semibold sm:text-base">@{e.handle}</p>
                   <p className="font-display text-lg font-bold tabular-nums sm:text-2xl">{num(e.cultPower)}</p>
                   <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Cult Power</p>
@@ -116,7 +116,7 @@ export function Leaderboard() {
                     </td>
                     <td className="px-2 py-3">
                       <div className="flex items-center gap-3">
-                        <CardAvatar handle={e.handle} className="w-8 shrink-0" />
+                        <CardAvatar handle={e.handle} src={e.avatarUrl} className="w-8 shrink-0" />
                         <span className="truncate font-semibold">@{e.handle}</span>
                       </div>
                     </td>

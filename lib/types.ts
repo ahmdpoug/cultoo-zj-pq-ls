@@ -143,6 +143,7 @@ export interface LeaderboardEntry {
   rank: number
   handle: string
   displayName: string
+  avatarUrl?: string | null
   archetype: Archetype
   rarity: Rarity
   cultPower: number

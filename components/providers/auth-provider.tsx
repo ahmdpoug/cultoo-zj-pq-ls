@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           landingHeader: 'Enter the CULT',
           loginMessage: 'Connect your X account to strike your CT card.',
           showWalletLoginFirst: false,
+          walletChainType: 'ethereum-only',
         },
         embeddedWallets: {
           ethereum: { createOnLogin: 'users-without-wallets' },
