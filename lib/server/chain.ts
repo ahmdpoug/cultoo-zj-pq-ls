@@ -12,7 +12,7 @@ import {
   type Hash,
   type PublicClient,
 } from 'viem'
-import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
+import { privateKeyToAccount } from 'viem/accounts'
 import type { ChainInfo } from '@/lib/types'
 import { chainById, explorerTxUrl } from '@/lib/chain/chains'
 import { CULT_CHAIN_ID, CULT_TOKEN_ADDRESS } from '@/lib/config/cult'
@@ -21,7 +21,7 @@ import { HttpError } from './http'
 interface TokenRuntime {
   chain: NonNullable<ReturnType<typeof chainById>>
   token: Address
-  treasury: PrivateKeyAccount
+  treasury: Address
   client: PublicClient
   rpc: string | undefined
   meta?: { decimals: number; symbol: string }
@@ -37,17 +37,32 @@ function normalizePrivateKey(raw: string | undefined): Hash | null {
   return /^0x[0-9a-fA-F]{64}$/.test(hex) ? (hex as Hash) : null
 }
 
+/**
+ * Resolves the treasury wallet that receives every $CULT spend. The server never
+ * signs a transaction, so an address is all that is needed; a private key is
+ * still accepted and its address derived, for convenience.
+ */
+function resolveTreasury(): Address | null {
+  const explicit = process.env.CULT_TREASURY_ADDRESS?.trim()
+  if (explicit && isAddress(explicit)) return getAddress(explicit)
+  const raw = process.env.CULT_TREASURY_PRIVATE_KEY?.trim().replace(/^["']|["']$/g, '')
+  if (!raw) return null
+  if (isAddress(raw)) return getAddress(raw)
+  const key = normalizePrivateKey(raw)
+  return key ? privateKeyToAccount(key).address : null
+}
+
 function load(): TokenRuntime | null {
   if (runtime !== undefined) return runtime
   const token = process.env.CULT_TOKEN_ADDRESS || CULT_TOKEN_ADDRESS
   const chain = chainById(Number(process.env.CULT_CHAIN_ID || CULT_CHAIN_ID))
-  const key = normalizePrivateKey(process.env.CULT_TREASURY_PRIVATE_KEY)
-  if (!token || !isAddress(token) || !chain || !key) {
-    if (process.env.CULT_TREASURY_PRIVATE_KEY && !key) {
+  const treasury = resolveTreasury()
+  if (!token || !isAddress(token) || !chain || !treasury) {
+    if (process.env.CULT_TREASURY_PRIVATE_KEY && !treasury) {
       const raw = process.env.CULT_TREASURY_PRIVATE_KEY.trim()
       const shape = /\s/.test(raw) ? 'contains spaces (looks like a seed phrase)' : `${raw.length} characters`
       console.warn(
-        `[cult] CULT_TREASURY_PRIVATE_KEY is not a 32-byte hex private key (${shape}); on-chain payments are disabled.`,
+        `[cult] CULT_TREASURY_PRIVATE_KEY is neither a wallet address nor a 32-byte hex private key (${shape}); on-chain payments are disabled.`,
       )
     }
     runtime = null
@@ -57,7 +72,7 @@ function load(): TokenRuntime | null {
   runtime = {
     chain,
     token: getAddress(token),
-    treasury: privateKeyToAccount(key),
+    treasury,
     client: createPublicClient({ chain, transport: http(rpc) }) as PublicClient,
     rpc,
   }
@@ -91,7 +106,7 @@ export async function chainInfo(): Promise<ChainInfo> {
     chainId: r.chain.id,
     chainName: r.chain.name,
     tokenAddress: r.token,
-    treasury: r.treasury.address,
+    treasury: r.treasury,
     symbol: meta.symbol,
     decimals: meta.decimals,
     explorer: r.chain.blockExplorers?.default.url ?? null,
@@ -99,7 +114,7 @@ export async function chainInfo(): Promise<ChainInfo> {
 }
 
 export function treasuryAddress(): Address {
-  return requireToken().treasury.address
+  return requireToken().treasury
 }
 
 export function txUrl(hash: string) {
