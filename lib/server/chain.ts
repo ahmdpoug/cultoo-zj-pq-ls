@@ -45,7 +45,11 @@ function load(): TokenRuntime | null {
   const key = normalizePrivateKey(process.env.CULT_TREASURY_PRIVATE_KEY)
   if (!token || !isAddress(token) || !chain || !key) {
     if (process.env.CULT_TREASURY_PRIVATE_KEY && !key) {
-      console.warn('[cult] CULT_TREASURY_PRIVATE_KEY is not a 32-byte hex private key; on-chain payments are disabled.')
+      const raw = process.env.CULT_TREASURY_PRIVATE_KEY.trim()
+      const shape = /\s/.test(raw) ? 'contains spaces (looks like a seed phrase)' : `${raw.length} characters`
+      console.warn(
+        `[cult] CULT_TREASURY_PRIVATE_KEY is not a 32-byte hex private key (${shape}); on-chain payments are disabled.`,
+      )
     }
     runtime = null
     return null

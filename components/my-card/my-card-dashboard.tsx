@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowUpCircle, Gem, RefreshCw, Share2, Swords, History } from 'lucide-react'
-import type { CultCard } from '@/lib/types'
+import { ArrowUpCircle, ExternalLink, Gem, RefreshCw, Share2, Swords, History } from 'lucide-react'
+import type { CultCard, TxReceipt } from '@/lib/types'
 import { useGame } from '@/hooks/use-game'
-import { useLeaderboard } from '@/hooks/use-data'
+import { useChainInfo, useLeaderboard } from '@/hooks/use-data'
+import { CULT_CHAIN_NAME, shortAddress } from '@/lib/config/cult'
 import { services, UPGRADE_COST, InsufficientBalanceError } from '@/lib/services'
 import { CultCardView } from '@/components/cards/cult-card'
 import { ShareModal } from '@/components/cards/share-modal'
@@ -30,19 +31,24 @@ export function MyCardDashboard({ card }: { card: CultCard }) {
   const [upgrading, setUpgrading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [levelUp, setLevelUp] = useState<number | null>(null)
+  const [tx, setTx] = useState<TxReceipt | null>(null)
+  const { data: chain } = useChainInfo()
 
   const power = cultPower(card)
   const myRank = board?.myRank ?? null
+  const onChain = Boolean(chain?.configured && chain.treasury)
 
   async function upgrade() {
     setUpgrading(true)
     setNotice(null)
+    setTx(null)
     try {
-      const { levelsGained } = await services.forge.upgrade(card.id)
+      const { levelsGained, receipt } = await services.forge.upgrade(card.id)
       if (levelsGained > 0) {
         setLevelUp(card.level + levelsGained)
         setTimeout(() => setLevelUp(null), 2200)
       }
+      setTx(receipt)
       setNotice(`+${num(UPGRADE_COST.xp)} XP applied`)
     } catch (e) {
       setNotice(e instanceof InsufficientBalanceError ? 'Not enough $CULT for an upgrade.' : (e as Error).message)
@@ -75,10 +81,27 @@ export function MyCardDashboard({ card }: { card: CultCard }) {
         <p className="text-center text-xs text-muted-foreground">
           Upgrade: {UPGRADE_COST.cult} $CULT + {UPGRADE_COST.materials} materials → +{num(UPGRADE_COST.xp)} XP
         </p>
+        {onChain && (
+          <p className="text-center text-xs text-muted-foreground">
+            Paid on-chain in $CULT on {CULT_CHAIN_NAME} from your wallet
+            {state.wallet.address ? ` (${shortAddress(state.wallet.address)})` : ''}.
+          </p>
+        )}
         {notice && (
           <p role="status" className="text-sm text-primary">
             {notice}
           </p>
+        )}
+        {tx?.explorerUrl && (
+          <a
+            href={tx.explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 break-all text-center font-mono text-xs text-primary hover:underline"
+          >
+            <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+            {tx.hash}
+          </a>
         )}
       </aside>
 

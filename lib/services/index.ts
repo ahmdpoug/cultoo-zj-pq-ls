@@ -1,6 +1,7 @@
 import { mutate } from 'swr'
 import type { BattleRecord, ChainInfo, CultCard, MarketPurchase, TxReceipt, XProfile } from '@/lib/types'
 import { authBridge } from '@/lib/auth/bridge'
+import { UPGRADE_COST } from '@/lib/game/config'
 import { apiFetch, ApiError, STATE_KEY } from './api'
 import { InsufficientBalanceError, type CultServices } from './types'
 import { xSocial, XLookupError } from './x-social'
@@ -70,7 +71,10 @@ export const services: CultServices = {
       return action<{ receipt: TxReceipt; card: CultCard }>({ action: 'forge', cardIds })
     },
     async upgrade(cardId) {
-      return action<{ receipt: TxReceipt; levelsGained: number }>({ action: 'upgrade', cardId })
+      const chain = await apiFetch<ChainInfo>('/api/game/chain').catch(() => null)
+      const txHash =
+        chain?.configured && chain.treasury ? await authBridge.sendCultTransfer(chain.treasury, UPGRADE_COST.cult) : undefined
+      return action<{ receipt: TxReceipt; levelsGained: number }>({ action: 'upgrade', cardId, txHash })
     },
   },
 

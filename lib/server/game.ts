@@ -351,21 +351,49 @@ export async function forgeCards(playerId: string, cardIds: string[]) {
   return { card: toCard(inserted, player.xHandle) }
 }
 
-export async function upgradeCard(playerId: string, cardId: string) {
+/**
+ * Upgrades a card. When $CULT is configured on-chain the fee is a real transfer
+ * to the treasury, verified against the player's own wallet and recorded so its
+ * hash can't be reused. Materials are always spent from the in-game balance.
+ */
+export async function upgradeCard(playerId: string, cardId: string, txHash?: string) {
   const player = await getOrCreatePlayer(playerId)
-  if (player.balance < UPGRADE_COST.cult) throw new HttpError(402, 'Not enough $CULT for an upgrade.')
   if (player.materials < UPGRADE_COST.materials) throw new HttpError(400, 'Not enough forge materials.')
 
-  return db.transaction(async (tx) => {
+  const onChain = (await chainInfo()).configured
+  let txReceipt: TxReceipt
+
+  if (onChain) {
+    if (!txHash) throw new HttpError(402, 'Send the $CULT upgrade fee before confirming.')
+    if (!player.walletAddress) throw new HttpError(400, 'Connect a wallet to upgrade on-chain.')
+    await verifyTransfer({ hash: txHash, from: player.walletAddress, to: treasuryAddress(), amount: UPGRADE_COST.cult })
+    const [recorded] = await db
+      .insert(payments)
+      .values({ txHash, playerId, purpose: 'card-upgrade', amount: UPGRADE_COST.cult })
+      .onConflictDoNothing()
+      .returning()
+    if (!recorded) throw new HttpError(409, 'That transaction has already been used.')
+    txReceipt = { hash: txHash, at: Date.now(), explorerUrl: txUrl(txHash) }
+  } else {
+    if (player.balance < UPGRADE_COST.cult) throw new HttpError(402, 'Not enough $CULT for an upgrade.')
+    txReceipt = receipt()
+  }
+
+  const result = await db.transaction(async (tx) => {
     await tx
       .update(players)
-      .set({ balance: player.balance - UPGRADE_COST.cult, materials: player.materials - UPGRADE_COST.materials })
+      .set({
+        ...(onChain ? {} : { balance: player.balance - UPGRADE_COST.cult }),
+        materials: player.materials - UPGRADE_COST.materials,
+      })
       .where(eq(players.id, playerId))
     const { levelsGained } = await grantXp(tx, playerId, cardId, UPGRADE_COST.xp)
     await logActivity(tx, playerId, 'level', `Upgraded card (+${UPGRADE_COST.xp} XP)`)
     await progressQuest(tx, playerId, 'upgrade')
     return { levelsGained }
   })
+
+  return { ...result, receipt: txReceipt }
 }
 
 export async function runBattle(playerId: string, cardId: string, opponentCardId: string) {

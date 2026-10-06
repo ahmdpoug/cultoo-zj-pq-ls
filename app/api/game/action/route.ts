@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       case 'forge':
         return NextResponse.json(await forgeCards(userId, Array.isArray(body.cardIds) ? (body.cardIds as string[]) : []))
       case 'upgrade':
-        return NextResponse.json(await upgradeCard(userId, String(body.cardId ?? '')))
+        return NextResponse.json(await upgradeCard(userId, String(body.cardId ?? ''), body.txHash ? String(body.txHash) : undefined))
       case 'battle':
         return NextResponse.json(await runBattle(userId, String(body.cardId ?? ''), String(body.opponentCardId ?? '')))
       case 'buy':
