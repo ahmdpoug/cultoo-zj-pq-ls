@@ -39,7 +39,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section className="py-20 md:py-28">
+    <section className="defer-render py-20 md:py-28">
       <div className="mx-auto max-w-3xl text-center">
         <Eyebrow className="justify-center">The Loop</Eyebrow>
         <h2 className="mt-4 font-display text-3xl font-bold uppercase tracking-tight text-balance metal-text sm:text-5xl">
@@ -71,7 +71,7 @@ export function RarityShowcase() {
   const { data: pool } = usePool()
   const samples = RARITIES.map((r) => pool?.find((c) => c.rarity === r)).filter((c): c is NonNullable<typeof c> => Boolean(c))
   return (
-    <section className="py-12">
+    <section className="defer-render py-12">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <Eyebrow>Rarity System</Eyebrow>
@@ -82,9 +82,9 @@ export function RarityShowcase() {
         </p>
       </div>
       {samples.length === 0 ? (
-        <div className="mt-10 grid gap-5 lg:grid-cols-5">
+        <div className="-mx-4 mt-10 flex gap-5 overflow-hidden px-4 lg:mx-0 lg:grid lg:grid-cols-5 lg:px-0">
           {RARITIES.map((r) => (
-            <div key={r} className="aspect-[5/7] animate-pulse rounded-2xl border border-white/10 bg-card" aria-hidden />
+            <div key={r} className="aspect-[5/7] w-56 shrink-0 animate-pulse rounded-2xl border border-white/10 bg-card lg:w-auto" aria-hidden />
           ))}
         </div>
       ) : (
@@ -108,7 +108,7 @@ export function ChampionshipTeaser() {
   const { data } = useLeaderboard()
   const season = data?.season
   return (
-    <section className="relative mt-20 overflow-hidden rounded-3xl border border-primary/20 bg-[radial-gradient(80%_120%_at_80%_50%,oklch(0.35_0.16_296/0.45),transparent_70%)] p-8 sm:p-12">
+    <section className="relative mt-20 overflow-hidden rounded-3xl border border-primary/20 bg-[radial-gradient(80%_120%_at_80%_50%,oklch(0.35_0.16_296/0.45),transparent_70%)] p-6 defer-render sm:p-12">
       <div aria-hidden className="absolute inset-0 grid-bg opacity-40" />
       <div className="relative max-w-xl">
         <Eyebrow>Flagship Event</Eyebrow>

@@ -89,7 +89,7 @@ export function CultCardView({ card, size = 'md', tilt = true, flipped = false, 
               <div className="absolute inset-0 flex items-center justify-center">
                 <CardAvatar handle={card.handle} src={card.avatarUrl} className="w-[40cqw]" />
               </div>
-              <div className="absolute right-[3cqw] top-[3cqw] flex flex-col items-end rounded-[2cqw] border rarity-border bg-black/60 px-[2.4cqw] py-[1.2cqw] backdrop-blur">
+              <div className="absolute right-[3cqw] top-[3cqw] flex flex-col items-end rounded-[2cqw] border rarity-border bg-black/75 px-[2.4cqw] py-[1.2cqw]">
                 <span className="text-[length:2.4cqw] font-semibold tracking-[0.2em] text-muted-foreground">CT SCORE</span>
                 <span className="font-display text-[length:9cqw] font-bold leading-none rarity-text tabular-nums">
                   {card.stats.ctScore}

@@ -8,15 +8,19 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const [entries, season] = await Promise.all([getLeaderboard(), getSeason()])
-    let myRank: number | null = null
-    if (req.headers.get('authorization')) {
-      try {
-        myRank = await getPlayerRank(await requireUserId(req))
-      } catch {
-        myRank = null
-      }
+    if (!req.headers.get('authorization')) {
+      return NextResponse.json(
+        { entries, season, myRank: null },
+        { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120', Vary: 'Authorization' } },
+      )
     }
-    return NextResponse.json({ entries, season, myRank })
+    let myRank: number | null = null
+    try {
+      myRank = await getPlayerRank(await requireUserId(req))
+    } catch {
+      myRank = null
+    }
+    return NextResponse.json({ entries, season, myRank }, { headers: { 'Cache-Control': 'private, no-store', Vary: 'Authorization' } })
   } catch (err) {
     return errorResponse(err)
   }

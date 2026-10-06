@@ -11,7 +11,7 @@ export default function HomePage() {
       <Manifesto />
       <HowItWorks />
       <RarityShowcase />
-      <section className="py-20">
+      <section className="defer-render py-20">
         <Eyebrow>Cult World</Eyebrow>
         <h2 className="mt-4 font-display text-3xl font-bold uppercase tracking-tight metal-text sm:text-4xl">Choose your destination</h2>
         <div className="mt-10">

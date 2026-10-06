@@ -58,11 +58,11 @@ export function Hero() {
         </dl>
       </div>
 
-      <div className="relative flex min-h-[30rem] items-center justify-center">
-        <div aria-hidden className="absolute size-[26rem] rounded-full bg-primary/20 blur-[100px]" />
-        <div aria-hidden className="absolute size-[30rem] rounded-full border border-white/[0.05]" />
-        <div aria-hidden className="absolute size-[22rem] rounded-full border border-primary/15" />
-        <Particles count={28} seed="hero" />
+      <div className="relative flex min-h-[26rem] items-center justify-center sm:min-h-[30rem]">
+        <div aria-hidden className="absolute size-[18rem] rounded-full bg-primary/20 blur-3xl sm:size-[26rem] md:blur-[100px]" />
+        <div aria-hidden className="absolute size-[22rem] rounded-full border border-white/[0.05] sm:size-[30rem]" />
+        <div aria-hidden className="absolute size-[16rem] rounded-full border border-primary/15 sm:size-[22rem]" />
+        <Particles count={20} seed="hero" />
         {heroCard ? (
           <div className="animate-float">
             <CultCardView card={heroCard} size="xl" />

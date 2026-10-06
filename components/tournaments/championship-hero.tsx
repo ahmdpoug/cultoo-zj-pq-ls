@@ -40,11 +40,11 @@ export function ChampionshipHero() {
   return (
     <section className="relative overflow-hidden rounded-3xl border border-white/[0.07] bg-[radial-gradient(70%_90%_at_70%_40%,oklch(0.3_0.15_296/0.5),transparent_70%)]">
       <div aria-hidden className="absolute inset-0 grid-bg opacity-50" />
-      <Particles count={30} seed="championship" />
-      <div className="relative grid gap-8 p-6 sm:p-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
-        <div>
+      <Particles count={20} seed="championship" />
+      <div className="relative grid gap-8 p-5 sm:p-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+        <div className="min-w-0">
           <Eyebrow>{season?.label ?? 'Genesis — Season 01'}</Eyebrow>
-          <h2 className="mt-4 font-display text-4xl font-bold uppercase leading-none tracking-tight metal-text text-balance sm:text-6xl">CULT CT Championship</h2>
+          <h2 className="mt-4 break-words font-display text-[clamp(1.5rem,7vw,3.75rem)] font-bold uppercase leading-none tracking-tight metal-text text-balance">CULT CT Championship</h2>
           <p className="mt-4 max-w-lg text-muted-foreground">
             The top {season?.qualifyTop ?? 100} of the CULT 100 at season end qualify for the final tournament. One card leaves as CT Champion.
           </p>

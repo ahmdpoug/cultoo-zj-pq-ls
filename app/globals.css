@@ -327,6 +327,18 @@
   animation: rise linear infinite;
 }
 
+/* Skip layout/paint (and offscreen animations) for below-the-fold sections until scrolled near. */
+@utility defer-render {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
+}
+
+@media (max-width: 639px) {
+  .particle:nth-child(2n) {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

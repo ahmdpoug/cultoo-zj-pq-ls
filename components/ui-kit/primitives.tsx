@@ -29,9 +29,11 @@ export function PageHeader({
 }) {
   return (
     <header className="flex flex-col gap-5 pb-8 pt-2 md:flex-row md:items-end md:justify-between md:pb-10">
-      <div className="max-w-2xl">
+      <div className="min-w-0 max-w-2xl">
         <Eyebrow>{eyebrow}</Eyebrow>
-        <h1 className="mt-3 font-display text-4xl font-bold uppercase tracking-tight metal-text text-balance sm:text-5xl">{title}</h1>
+        <h1 className="mt-3 break-words font-display text-[clamp(1.75rem,8vw,3rem)] font-bold uppercase leading-tight tracking-tight metal-text text-balance">
+          {title}
+        </h1>
         {subtitle && <p className="mt-3 text-pretty text-muted-foreground leading-relaxed">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-3">{actions}</div>}
