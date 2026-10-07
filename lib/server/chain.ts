@@ -121,9 +121,14 @@ export function txUrl(hash: string) {
   return explorerTxUrl(load()?.chain ?? null, hash)
 }
 
-export async function balanceOf(address: string | null): Promise<number> {
+/**
+ * The wallet's real on-chain $CULT balance. Returns null when the token isn't
+ * configured, no wallet is connected, or the read fails, so callers can fall
+ * back to the in-game ledger instead of showing a misleading zero.
+ */
+export async function walletBalance(address: string | null): Promise<number | null> {
   const r = load()
-  if (!r || !address || !isAddress(address)) return 0
+  if (!r || !address || !isAddress(address)) return null
   try {
     const [raw, meta] = await Promise.all([
       r.client.readContract({ address: r.token, abi: erc20Abi, functionName: 'balanceOf', args: [getAddress(address)] }),
@@ -131,7 +136,7 @@ export async function balanceOf(address: string | null): Promise<number> {
     ])
     return Number(formatUnits(raw, meta.decimals))
   } catch {
-    return 0
+    return null
   }
 }
 

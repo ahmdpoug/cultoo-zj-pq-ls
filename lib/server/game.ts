@@ -16,7 +16,7 @@ import type {
 } from '@/lib/types'
 import { db, type Tx } from '@/lib/db'
 import { activity, battles, cards, listings, payments, players, tournamentEntries, type CardRow, type PlayerRow } from '@/lib/db/schema'
-import { chainInfo, treasuryAddress, txUrl, verifyTransfer } from './chain'
+import { chainInfo, treasuryAddress, txUrl, verifyTransfer, walletBalance } from './chain'
 import { applyXp } from '@/lib/game/progression'
 import { randomId } from '@/lib/game/rng'
 import { buildCard, cultPower, normalizeHandle } from '@/lib/game/scoring'
@@ -217,12 +217,13 @@ export async function loadGameState(playerId: string): Promise<GameState> {
   const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
   if (!player) throw new HttpError(404, 'Player not found.')
 
-  const [cardRows, battleRows, activityRows, entryRows, listingRows] = await Promise.all([
+  const [cardRows, battleRows, activityRows, entryRows, listingRows, onchain] = await Promise.all([
     db.select().from(cards).where(eq(cards.ownerId, playerId)).orderBy(desc(cards.createdAt)),
     db.select().from(battles).where(eq(battles.playerId, playerId)).orderBy(desc(battles.at)).limit(30),
     db.select().from(activity).where(eq(activity.playerId, playerId)).orderBy(desc(activity.at)).limit(40),
     db.select().from(tournamentEntries).where(eq(tournamentEntries.playerId, playerId)),
     db.select().from(listings).where(and(eq(listings.sellerId, playerId), eq(listings.status, 'active'))),
+    walletBalance(player.walletAddress),
   ])
 
   return {
@@ -231,7 +232,9 @@ export async function loadGameState(playerId: string): Promise<GameState> {
     cards: cardRows.map((c) => toCard(c, player.xHandle)),
     wallet: { address: player.walletAddress },
     economy: {
-      balance: player.balance,
+      // When $CULT is live on-chain the wallet holds the real balance; the DB
+      // ledger is only authoritative for the offline (unconfigured) mode.
+      balance: onchain ?? player.balance,
       pendingCult: player.pendingCult,
       fragments: player.fragments,
       materials: player.materials,
