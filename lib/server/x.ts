@@ -10,6 +10,52 @@ export class XLookupError extends HttpError {
   }
 }
 
+async function fromPublicLookup(handle: string): Promise<XApiUser> {
+  const res = await fetch(`https://api.fxtwitter.com/user/by/username/${encodeURIComponent(handle)}`, {
+    headers: { Accept: 'application/json' },
+    next: { revalidate: 3600 },
+  })
+  const body = (await res.json().catch(() => null)) as {
+    code?: number
+    message?: string
+    user?: {
+      id?: string
+      name?: string
+      screen_name?: string
+      description?: string
+      avatar_url?: string
+      created_at?: string
+      verified?: boolean
+      followers_count?: number
+      following_count?: number
+      tweets_count?: number
+      listed_count?: number
+      likes_count?: number
+    }
+  } | null
+  const user = body?.user
+  if (!res.ok || !user?.id || !user.screen_name) {
+    if (res.status === 404 || body?.code === 404) throw new XLookupError(`@${handle} doesn't exist on X.`, 404)
+    throw new XLookupError('Could not connect to the public X lookup service. Try again shortly.', 502)
+  }
+  return {
+    id: user.id,
+    name: user.name || user.screen_name,
+    username: user.screen_name,
+    description: user.description,
+    profile_image_url: user.avatar_url,
+    created_at: user.created_at,
+    verified: user.verified,
+    public_metrics: {
+      followers_count: user.followers_count ?? 0,
+      following_count: user.following_count ?? 0,
+      tweet_count: user.tweets_count ?? 0,
+      listed_count: user.listed_count,
+      like_count: user.likes_count,
+    },
+  }
+}
+
 async function fromXApi(handle: string, bearer: string): Promise<XApiUser> {
   try {
     const res = await fetch(`https://api.x.com/2/users/by/username/${encodeURIComponent(handle)}?user.fields=${USER_FIELDS}`, {
@@ -40,9 +86,7 @@ export async function lookupXProfile(handle: string): Promise<XProfile> {
   if (cached && Date.now() - cached.at < PROFILE_TTL_MS) return cached.profile
 
   const bearer = process.env.X_BEARER_TOKEN
-  if (!bearer) throw new XLookupError('X API is not configured. Add X_BEARER_TOKEN to enable live profile lookups.', 503)
-
-  const profile = mapXUser(await fromXApi(handle, bearer))
+  const profile = mapXUser(bearer ? await fromXApi(handle, bearer) : await fromPublicLookup(handle))
 
   if (profileCache.size > 500) profileCache.clear()
   profileCache.set(key, { at: Date.now(), profile })
