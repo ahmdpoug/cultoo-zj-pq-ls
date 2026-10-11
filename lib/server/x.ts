@@ -11,15 +11,23 @@ export class XLookupError extends HttpError {
 }
 
 async function fromXApi(handle: string, bearer: string): Promise<XApiUser> {
-  const res = await fetch(`https://api.x.com/2/users/by/username/${encodeURIComponent(handle)}?user.fields=${USER_FIELDS}`, {
-    headers: { Authorization: `Bearer ${bearer}` },
-    next: { revalidate: 3600 },
-  })
-  if (res.status === 429) throw new XLookupError('X rate limit reached. Try again shortly.', 429)
-  const body = (await res.json().catch(() => null)) as { data?: XApiUser; errors?: { title?: string }[] } | null
-  if (res.ok && body?.data) return body.data
-  const notFound = res.status === 404 || body?.errors?.some((e) => e.title === 'Not Found Error')
-  throw new XLookupError(notFound ? `@${handle} doesn't exist on X.` : 'X API request failed.', notFound ? 404 : 502)
+  try {
+    const res = await fetch(`https://api.x.com/2/users/by/username/${encodeURIComponent(handle)}?user.fields=${USER_FIELDS}`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      next: { revalidate: 3600 },
+    })
+    if (res.status === 401 || res.status === 403) {
+      throw new XLookupError('X API access was rejected. Check the X_BEARER_TOKEN configuration.', 502)
+    }
+    if (res.status === 429) throw new XLookupError('X rate limit reached. Try again shortly.', 429)
+    const body = (await res.json().catch(() => null)) as { data?: XApiUser; errors?: { title?: string }[] } | null
+    if (res.ok && body?.data) return body.data
+    const notFound = res.status === 404 || body?.errors?.some((e) => e.title === 'Not Found Error')
+    throw new XLookupError(notFound ? `@${handle} doesn't exist on X.` : 'X API request failed.', notFound ? 404 : 502)
+  } catch (error) {
+    if (error instanceof XLookupError) throw error
+    throw new XLookupError('Could not connect to the X API. Try again shortly.', 502)
+  }
 }
 
 const PROFILE_TTL_MS = 10 * 60 * 1000
