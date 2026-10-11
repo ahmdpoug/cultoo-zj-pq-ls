@@ -30,7 +30,7 @@ interface FxUser {
   avatar_url?: string
   followers: number
   following: number
-  tweets: number
+  statuses: number
   likes: number
   joined?: string
   protected?: boolean
@@ -39,15 +39,16 @@ interface FxUser {
 
 /** Public, key-less mirror of X profile data (api.fxtwitter.com). */
 async function fromFxTwitter(handle: string): Promise<XApiUser> {
-  const res = await fetch(`https://api.fxtwitter.com/${handle}`, {
+  const res = await fetch(`https://api.fxtwitter.com/2/profile/${encodeURIComponent(handle)}`, {
+    signal: AbortSignal.timeout(12_000),
     redirect: 'manual',
     headers: { 'User-Agent': 'CultCards/1.0' },
     next: { revalidate: 900 },
   })
   const body = (await res.json().catch(() => null)) as { code?: number; user?: FxUser } | null
   if (!res.ok || body?.code !== 200 || !body.user) {
-    const notFound = res.status === 404 || res.status === 302 || body?.code === 404
-    throw new XLookupError(notFound ? `@${handle} doesn't exist on X.` : 'Could not reach X right now.', notFound ? 404 : 502)
+    const notFound = res.status === 404 || body?.code === 404
+    throw new XLookupError(notFound ? `@${handle} was not found or is unavailable from the public X data provider.` : 'Could not reach the public X data provider right now.', notFound ? 404 : 502)
   }
   const u = body.user
   return {
@@ -62,7 +63,7 @@ async function fromFxTwitter(handle: string): Promise<XApiUser> {
     public_metrics: {
       followers_count: u.followers,
       following_count: u.following,
-      tweet_count: u.tweets,
+      tweet_count: u.statuses,
       like_count: u.likes,
     },
   }
