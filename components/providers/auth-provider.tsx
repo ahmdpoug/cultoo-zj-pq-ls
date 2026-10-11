@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={PRIVY_APP_ID}
       config={{
-        loginMethods: ['twitter', 'wallet'],
+        loginMethods: ['twitter'],
         appearance: {
           theme: 'dark',
           accentColor: '#9b6bff',
